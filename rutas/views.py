@@ -73,6 +73,9 @@ def mapa_view(request):
         'destino_lng': request.session.pop('destino_lng', None),
 
         'error_message': request.session.pop('error_message', None),
+
+        # NUEVO: para que el template sepa qué puntos quedaron seleccionados
+        'selected_ids': selected_ids,
     }
 
     return render(request, 'rutas/mapa.html', context)
@@ -157,7 +160,7 @@ def optimizar_ruta(request):
         )
         return redirect('mapa')
 
-    # Guardar selección en sesión para que el mapa muestre sólo estos puntos
+    # Guardar selección en sesión para que el mapa y los checkboxes sepan qué se usó
     request.session['selected_ids'] = selected_ids
 
     # Obtener sólo los puntos seleccionados
@@ -342,7 +345,7 @@ def borrar_puntos(request):
     """
     if request.method == "POST":
         PuntoEntrega.objects.all().delete()
-        # Opcional: limpiar selección si borras todos
+        # Limpiar selección si borras todos
         if 'selected_ids' in request.session:
             del request.session['selected_ids']
     return redirect('mapa')
@@ -357,6 +360,14 @@ def borrar_punto(request, punto_id):
     try:
         punto = get_object_or_404(PuntoEntrega, id=punto_id)
         punto.delete()
+
+        # Actualizar la selección en sesión si existía
+        selected_ids = request.session.get('selected_ids')
+        if selected_ids:
+            pid_str = str(punto_id)
+            selected_ids = [sid for sid in selected_ids if sid != pid_str]
+            request.session['selected_ids'] = selected_ids
+
         return JsonResponse({"ok": True})
     except Exception as e:
         # Útil para depurar si algo raro pasa en producción

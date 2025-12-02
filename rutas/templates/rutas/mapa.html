@@ -91,20 +91,29 @@
         {% if puntos_entrega %}
             <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; margin-bottom: 15px;">
                 {% for punto in puntos_entrega %}
-                    <label style="display:block; margin-bottom: 4px;">
-                        <input type="checkbox"
-                               name="puntos_seleccionados"
-                               value="{{ punto.id }}"
-                               checked>
-                        {{ punto.nombre }} - {{ punto.direccion }}
-                        {% if punto.orden_optimo %}
-                            (Orden actual: {{ punto.orden_optimo }})
-                        {% endif %}
-                    </label>
+                    {% with punto_id_str=punto.id|stringformat:"s" %}
+                        <label style="display:block; margin-bottom: 4px;">
+                            <input type="checkbox"
+                                   name="puntos_seleccionados"
+                                   value="{{ punto.id }}"
+                                   {% if selected_ids %}
+                                       {% if punto_id_str in selected_ids %}
+                                           checked
+                                       {% endif %}
+                                   {% else %}
+                                       checked
+                                   {% endif %}>
+                            {{ punto.nombre }} - {{ punto.direccion }}
+                            {% if punto.orden_optimo %}
+                                (Orden actual: {{ punto.orden_optimo }})
+                            {% endif %}
+                        </label>
+                    {% endwith %}
                 {% endfor %}
             </div>
             <small>
-                (Por defecto todos están seleccionados; desmarca los que no quieres considerar en este viaje)
+                (Por defecto todos están seleccionados; después de optimizar se mantienen
+                marcados solo los que se usaron en la última ruta.)
             </small>
         {% else %}
             <p>No hay puntos de entrega para optimizar.</p>
