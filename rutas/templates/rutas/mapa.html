@@ -69,7 +69,7 @@
                 {{ punto.nombre }} - {{ punto.direccion }}
                 (Orden: {{ punto.orden_optimo|default:"N/A" }})
                 <button type="button"
-                        onclick="eliminarPunto('{% url "borrar_punto" punto.id %}')">
+                        onclick="eliminarPunto('{% url 'borrar_punto' punto.id %}')">
                     Eliminar
                 </button>
             </li>
