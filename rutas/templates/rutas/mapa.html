@@ -258,8 +258,8 @@
 {% endblock content %}
 
 {% block extra_js %}
-    <script src="{% static 'js/main.js' %}"></script>
-
+    
+    
     <script>
         var google_maps_api_key = "{{ google_maps_api_key }}";
         var puntos_entrega_data = JSON.parse('{{ puntos_entrega_json|escapejs }}');
@@ -295,8 +295,8 @@
         console.log("origen_coords:", origen_coords);
         console.log("destino_coords:", destino_coords);
     </script>
-
-    <script async defer
+    <script src="{% static 'js/main.js' %}" defer></script>
+    <script defer
             src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&callback=initMap">
     </script>
 {% endblock extra_js %}
