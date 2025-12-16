@@ -39,12 +39,9 @@ function renderPuntosEntrega() {
     const bounds = new google.maps.LatLngBounds();
     const path = [];
 
-    let originPos = null;
-    let destPos = null;
-
     // ORIGEN
     if (typeof origen_coords !== "undefined" && origen_coords && origen_coords.lat && origen_coords.lng) {
-        originPos = { lat: origen_coords.lat, lng: origen_coords.lng };
+        const originPos = { lat: origen_coords.lat, lng: origen_coords.lng };
 
         const originMarker = new google.maps.Marker({
             position: originPos,
@@ -77,7 +74,7 @@ function renderPuntosEntrega() {
         puntos.forEach((p, index) => {
             const position = { lat: p.latitud, lng: p.longitud };
 
-            const labelText = anyOrden && p.orden_optimo
+            const labelText = (anyOrden && p.orden_optimo)
                 ? String(p.orden_optimo)
                 : String(index + 1);
 
@@ -96,7 +93,7 @@ function renderPuntosEntrega() {
 
     // DESTINO
     if (typeof destino_coords !== "undefined" && destino_coords && destino_coords.lat && destino_coords.lng) {
-        destPos = { lat: destino_coords.lat, lng: destino_coords.lng };
+        const destPos = { lat: destino_coords.lat, lng: destino_coords.lng };
 
         const destMarker = new google.maps.Marker({
             position: destPos,
@@ -166,11 +163,7 @@ function toggleOrigenCustom() {
 
     if (!select || !wrapper) return;
 
-    if (select.value === "custom") {
-        wrapper.style.display = "block";
-    } else {
-        wrapper.style.display = "none";
-    }
+    wrapper.style.display = (select.value === "custom") ? "block" : "none";
 }
 
 function toggleDestinoCustom() {
@@ -179,15 +172,10 @@ function toggleDestinoCustom() {
 
     if (!select || !wrapper) return;
 
-    if (select.value === "custom") {
-        wrapper.style.display = "block";
-    } else {
-        wrapper.style.display = "none";
-    }
+    wrapper.style.display = (select.value === "custom") ? "block" : "none";
 }
 
-// --- BORRAR PUNTO INDIVIDUAL ---
-
+// ===================== CSRF =====================
 function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== "") {
@@ -203,44 +191,136 @@ function getCookie(name) {
     return cookieValue;
 }
 
-function eliminarPunto(url) {
-    if (!confirm("¿Seguro que quieres eliminar este punto de entrega?")) {
+// ===================== MODAL REUTILIZABLE =====================
+let pendingAction = null;
+
+function openConfirmModal({ title, text, confirmText, onConfirm }) {
+    const modal = document.getElementById("confirmModal");
+    const titleEl = document.getElementById("confirmTitle");
+    const textEl = document.getElementById("confirmText");
+    const btnConfirm = document.getElementById("btnConfirm");
+
+    // Si no existe el modal, fallback a confirm (no rompe el mapa)
+    if (!modal || !titleEl || !textEl || !btnConfirm) {
+        if (confirm(text || "¿Seguro?")) onConfirm();
         return;
     }
 
-    const csrftoken = getCookie("csrftoken");
+    titleEl.textContent = title || "Confirmar";
+    textEl.textContent = text || "¿Seguro que deseas continuar?";
+    btnConfirm.textContent = confirmText || "Aceptar";
 
-    fetch(url, {
-        method: "POST",
-        headers: {
-            "X-CSRFToken": csrftoken,
-            "X-Requested-With": "XMLHttpRequest",
-        },
-    })
-    .then((response) => {
-        if (!response.ok) {
-            console.error("Error al borrar. Status:", response.status);
-            throw new Error("Error al borrar el punto");
+    pendingAction = onConfirm;
+
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+}
+
+function closeConfirmModal() {
+    const modal = document.getElementById("confirmModal");
+    if (!modal) return;
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+    pendingAction = null;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const modal = document.getElementById("confirmModal");
+    const btnCancel = document.getElementById("btnCancel");
+    const btnConfirm = document.getElementById("btnConfirm");
+
+    if (btnCancel) btnCancel.addEventListener("click", closeConfirmModal);
+
+    if (btnConfirm) {
+        btnConfirm.addEventListener("click", () => {
+            if (typeof pendingAction === "function") pendingAction();
+        });
+    }
+
+    // click fuera para cerrar
+    if (modal) {
+        modal.addEventListener("click", (e) => {
+            if (e.target === modal) closeConfirmModal();
+        });
+    }
+
+    // ESC para cerrar
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeConfirmModal();
+    });
+});
+
+// ===================== ELIMINAR 1 PUNTO (MODAL) =====================
+function eliminarPunto(url) {
+    openConfirmModal({
+        title: "Eliminar punto",
+        text: "¿Seguro que quieres eliminar este punto de entrega?",
+        confirmText: "Eliminar",
+        onConfirm: () => {
+            const csrftoken = getCookie("csrftoken");
+
+            fetch(url, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrftoken,
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            })
+            .then((response) => {
+                if (!response.ok) {
+                    console.error("Error al borrar. Status:", response.status);
+                    throw new Error("Error al borrar el punto");
+                }
+                return response.json();
+            })
+            .then((data) => {
+                if (data.ok) {
+                    location.reload();
+                } else {
+                    alert("El servidor respondió, pero no confirmó el borrado.");
+                    console.error("Detalle error:", data.error);
+                }
+            })
+            .catch((err) => {
+                console.error(err);
+                alert("No se pudo borrar el punto");
+            })
+            .finally(() => closeConfirmModal());
         }
-        return response.json();
-    })
-    .then((data) => {
-        if (data.ok) {
-            // Se borró en backend; recargamos para refrescar lista + mapa
-            location.reload();
-        } else {
-            alert("El servidor respondió, pero no confirmó el borrado.");
-            console.error("Detalle error:", data.error);
-        }
-    })
-    .catch((err) => {
-        console.error(err);
-        alert("No se pudo borrar el punto");
     });
 }
 
+// ===================== BORRAR TODOS (MODAL) =====================
+function borrarTodosPuntos(url) {
+    openConfirmModal({
+        title: "Borrar todos",
+        text: "¿Seguro que quieres borrar TODOS los puntos de entrega?",
+        confirmText: "Borrar todo",
+        onConfirm: () => {
+            const csrftoken = getCookie("csrftoken");
+
+            fetch(url, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrftoken,
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            })
+            .then(() => location.reload())
+            .catch((err) => {
+                console.error(err);
+                // fallback: navegación normal si tu vista no devuelve JSON
+                window.location.href = url;
+            })
+            .finally(() => closeConfirmModal());
+        }
+    });
+}
+
+// Exponer funciones globales
 window.initMap = initMap;
 window.clearMap = clearMap;
 window.toggleOrigenCustom = toggleOrigenCustom;
 window.toggleDestinoCustom = toggleDestinoCustom;
 window.eliminarPunto = eliminarPunto;
+window.borrarTodosPuntos = borrarTodosPuntos;

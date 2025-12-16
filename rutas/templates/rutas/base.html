@@ -21,5 +21,18 @@
         
     </footer>
     {% block extra_js %}{% endblock %}
+    <!-- Modal confirmación -->
+<div id="confirmModal" class="modal-overlay hidden" aria-hidden="true">
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <h3 id="confirmTitle">Confirmar</h3>
+    <p id="confirmText">¿Seguro?</p>
+    <div class="modal-actions">
+      <button id="btnCancel" class="btn-cancel" type="button">Cancelar</button>
+      <button id="btnConfirm" class="btn-danger" type="button">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+
 </body>
 </html>

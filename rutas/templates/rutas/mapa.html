@@ -220,9 +220,10 @@
     {# FORM PARA BORRAR TODOS LOS PUNTOS DE LA BD #}
     <form method="post" action="{% url 'borrar_puntos' %}">
         {% csrf_token %}
-        <button type="submit" onclick="return confirm('¿Seguro que quieres borrar TODOS los puntos de entrega?')">
+        <button type="button" onclick="borrarTodosPuntos('{% url 'borrar_puntos' %}')">
             Borrar todos los puntos de entrega
         </button>
+
     </form>
 
     {# BOTÓN PARA LIMPIAR SOLO EL MAPA (RUTA + MARCADORES) #}
