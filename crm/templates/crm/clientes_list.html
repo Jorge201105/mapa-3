@@ -10,53 +10,64 @@
   </a>
 </p>
 
-<table>
-  <thead>
-    <tr>
-      <th>ID</th>   <!-- 👈 NUEVO -->
-      <th>Nombre</th>
-      <th>Teléfono</th>
-      <th>Email</th>
-      <th>Comuna</th>
-      <th>Dirección</th>
-      <th>Acciones</th>
-    </tr>
-  </thead>
+<!-- 👇 WRAPPER para evitar que la tabla se salga del marco -->
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Teléfono</th>
+        <th>Email</th>
+        <th>Comuna</th>
+        <th>Dirección</th>
+        <th>Kilos comprados</th>
+        <th>Segmento</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
 
-  <tbody>
-  {% for c in clientes %}
-    <tr>
-      <td>{{ c.id }}</td>   <!-- 👈 AQUÍ -->
-      <td>{{ c.nombre }}</td>
-      <td>{{ c.telefono }}</td>
-      <td>{{ c.email }}</td>
-      <td>{{ c.comuna }}</td>
-      <td>{{ c.direccion }}</td>
-      <td>
-        <div class="acciones">
-          <a href="{% url 'crm:editar_cliente' c.id %}"
-             class="btn btn-edit">
-             Editar
-          </a>
+    <tbody>
+    {% for c in clientes %}
+      <tr>
+        <td>{{ c.id }}</td>
+        <td>{{ c.nombre }}</td>
+        <td>{{ c.telefono }}</td>
+        <td>{{ c.email }}</td>
+        <td>{{ c.comuna }}</td>
+        <td>{{ c.direccion }}</td>
+        <td>{{ c.gasto_total|default:0|floatformat:0 }} kg</td>
+        <td>
+          <span class="flag flag-{{ c.segmento_color }}">
+            {{ c.segmento }}
+          </span>
+        </td>
+        <td>
+          <div class="acciones">
+            <a href="{% url 'crm:editar_cliente' c.id %}"
+               class="btn btn-edit">
+               Editar
+            </a>
 
-          <form method="post"
-                action="{% url 'crm:borrar_cliente' c.id %}"
-                class="inline-form">
-            {% csrf_token %}
-            <button type="submit"
-                    class="btn btn-delete"
-                    onclick="return confirm('¿Seguro que quieres borrar este cliente?');">
-              Borrar
-            </button>
-          </form>
-        </div>
-      </td>
-    </tr>
-  {% empty %}
-    <tr>
-      <td colspan="6">No hay clientes.</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+            <form method="post"
+                  action="{% url 'crm:borrar_cliente' c.id %}"
+                  class="inline-form">
+              {% csrf_token %}
+              <button type="submit"
+                      class="btn btn-delete"
+                      onclick="return confirm('¿Seguro que quieres borrar este cliente?');">
+                Borrar
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+    {% empty %}
+      <tr>
+        <td colspan="9">No hay clientes.</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

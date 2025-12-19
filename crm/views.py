@@ -20,8 +20,19 @@ def cliente_creado(request):
 
 from .models import Cliente
 
+from django.db.models import Sum, Count, Max
+from .models import Cliente
+
 def clientes_list(request):
-    clientes = Cliente.objects.all().order_by("id")
+    clientes = (
+        Cliente.objects
+        .annotate(
+            gasto_total=Sum("ventas__total"),
+            compras=Count("ventas"),
+            ultima_compra=Max("ventas__fecha"),
+        )
+        .order_by("id")
+    )
     return render(request, "crm/clientes_list.html", {"clientes": clientes})
 
 from django.shortcuts import get_object_or_404

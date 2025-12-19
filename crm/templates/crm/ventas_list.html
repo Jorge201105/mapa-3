@@ -5,46 +5,59 @@
 <h2>Ventas</h2>
 
 <p>
-  <a class="btn btn-primary" href="{% url 'crm:venta_nueva' %}">➕ Nueva venta</a>
+  <a class="btn btn-primary" href="{% url 'crm:venta_nueva' %}">
+    ➕ Nueva venta
+  </a>
 </p>
 
-<table>
-  <thead>
-    <tr>
-      <th>ID</th>
-      <th>Cliente</th>
-      <th>Fecha</th>
-      <th>Total</th>
-      <th>Canal</th>
-      <th>Acciones</th>
-    </tr>
-  </thead>
+<!-- 👇 WRAPPER PARA SCROLL HORIZONTAL -->
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Cliente</th>
+        <th>Fecha</th>
+        <th>Total</th>
+        <th>Canal</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
 
-  <tbody>
-  {% for v in ventas %}
-    <tr>
-      <td>{{ v.id }}</td>
-      <td>{{ v.cliente }}</td>
-      <td>{{ v.fecha }}</td>
-      <td>{{ v.total }}</td>
-      <td>{{ v.canal }}</td>
-      <td>
-        <div class="acciones">
-          <a class="btn btn-edit" href="{% url 'crm:venta_editar' v.id %}">Editar</a>
+    <tbody>
+    {% for v in ventas %}
+      <tr>
+        <td>{{ v.id }}</td>
+        <td>{{ v.cliente }}</td>
+        <td>{{ v.fecha }}</td>
+        <td>{{ v.total }}</td>
+        <td>{{ v.canal }}</td>
+        <td>
+          <div class="acciones">
+            <a class="btn btn-edit"
+               href="{% url 'crm:venta_editar' v.id %}">
+              Editar
+            </a>
 
-          <form method="post" action="{% url 'crm:venta_borrar' v.id %}" class="inline-form">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-delete"
-                    onclick="return confirm('¿Seguro que quieres borrar esta venta?');">
-              Borrar
-            </button>
-          </form>
-        </div>
-      </td>
-    </tr>
-  {% empty %}
-    <tr><td colspan="6">No hay ventas.</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+            <form method="post"
+                  action="{% url 'crm:venta_borrar' v.id %}"
+                  class="inline-form">
+              {% csrf_token %}
+              <button type="submit"
+                      class="btn btn-delete"
+                      onclick="return confirm('¿Seguro que quieres borrar esta venta?');">
+                Borrar
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+    {% empty %}
+      <tr>
+        <td colspan="6">No hay ventas.</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

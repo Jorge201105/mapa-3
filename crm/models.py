@@ -12,6 +12,18 @@ class Cliente(models.Model):
     direccion = models.CharField(max_length=200, blank=True)
     creado_en = models.DateTimeField(auto_now_add=True)
 
+  
+    @property
+    def segmento(self):
+        from .services import segmentar_cliente
+        return segmentar_cliente(self)[0]
+
+    @property
+    def segmento_color(self):
+        from .services import segmentar_cliente
+        return segmentar_cliente(self)[1]
+
+
     def __str__(self):
         return f"{self.nombre} ({self.telefono or self.email or 'sin contacto'})"
 
