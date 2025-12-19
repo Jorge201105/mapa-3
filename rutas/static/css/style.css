@@ -144,12 +144,12 @@ button[type="submit"]:hover {
 table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 15px;
+    margin-top: 10px;
 }
 
 table th,
 table td {
-    padding: 12px;
+    padding: 8px 10px;
     border: 1px solid #dee2e6;
     text-align: left;
 }
@@ -414,5 +414,72 @@ button.btn-delete[type="submit"]:hover {
   main {
     margin: 10px;
     padding: 12px;
+  }
+}
+
+/* ✅ FILTROS alineados */
+.filtros{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;   /* 👈 clave: alinea arriba */
+  margin: 12px 0 18px;
+  padding: 14px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+}
+
+.filtros label{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 700;
+  font-size: .9rem;
+  min-width: 160px;          /* evita “saltos” raros */
+}
+
+.filtros select,
+.filtros input{
+  height: 40px;              /* 👈 misma altura: elimina el desfase */
+  padding: 8px 10px;
+  border: 1px solid #ced4da;
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-size: .95rem;
+}
+
+/* Acciones (Filtrar/Limpiar) alineadas */
+.filtros-actions{
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+/* (Opcional) Mín kilos más angosto */
+.filtros input[name="min_kilos"]{
+  max-width: 140px;
+}
+
+/* Que los filtros ocupen el ancho justo y no dejen tanto vacío */
+.filtros label{
+  min-width: 180px;       /* antes 160px */
+}
+
+.filtros-actions{
+  margin-left: auto;      /* empuja botones a la derecha */
+}
+
+@media (max-width: 768px){
+  .filtros{
+    gap: 12px;
+  }
+  .filtros label{
+    min-width: 100%;
+  }
+  .filtros-actions{
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
   }
 }

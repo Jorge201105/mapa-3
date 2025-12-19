@@ -18,7 +18,7 @@
         <th>ID</th>
         <th>Cliente</th>
         <th>Fecha</th>
-        <th>Total</th>
+        <th>Kilos</th>
         <th>Canal</th>
         <th>Acciones</th>
       </tr>
@@ -30,7 +30,7 @@
         <td>{{ v.id }}</td>
         <td>{{ v.cliente }}</td>
         <td>{{ v.fecha }}</td>
-        <td>{{ v.total }}</td>
+        <td>{{ v.total|floatformat:0 }}</td>
         <td>{{ v.canal }}</td>
         <td>
           <div class="acciones">

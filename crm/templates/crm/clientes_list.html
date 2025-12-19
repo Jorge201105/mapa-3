@@ -10,6 +10,49 @@
   </a>
 </p>
 
+<!-- ✅ FILTROS -->
+<form method="get" class="filtros">
+  <label>
+    Segmento:
+    <select name="segmento">
+      <option value="">Todos</option>
+      <option value="VIP" {% if f.segmento == "VIP" %}selected{% endif %}>VIP</option>
+      <option value="Frecuente" {% if f.segmento == "Frecuente" %}selected{% endif %}>Frecuente</option>
+      <option value="Ocasional" {% if f.segmento == "Ocasional" %}selected{% endif %}>Ocasional</option>
+      <option value="Dormido" {% if f.segmento == "Dormido" %}selected{% endif %}>Dormido</option>
+    </select>
+  </label>
+
+  <label>
+    Comuna:
+    <select name="comuna">
+      <option value="">Todas</option>
+      {% for co in comunas %}
+        <option value="{{ co }}" {% if f.comuna == co %}selected{% endif %}>{{ co }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label>
+    Mín kilos:
+    <input type="number" name="min_kilos" value="{{ f.min_kilos }}" min="0" step="1">
+  </label>
+
+  <label>
+    Orden:
+    <select name="orden">
+      <option value="kilos_desc" {% if f.orden == "kilos_desc" or not f.orden %}selected{% endif %}>Más kilos</option>
+      <option value="kilos_asc" {% if f.orden == "kilos_asc" %}selected{% endif %}>Menos kilos</option>
+      <option value="id" {% if f.orden == "id" %}selected{% endif %}>ID</option>
+    </select>
+  </label>
+
+  <div class="filtros-actions">
+    <button class="btn btn-primary" type="submit">Filtrar</button>
+    <a class="btn" href="{% url 'crm:clientes_list' %}">Limpiar</a>
+  </div>
+</form>
+
 <!-- 👇 WRAPPER para evitar que la tabla se salga del marco -->
 <div class="table-wrap">
   <table>
