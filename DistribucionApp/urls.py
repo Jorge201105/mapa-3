@@ -8,5 +8,5 @@ from django.urls import path, include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('rutas.urls')),  # todas las URLs de la app 'rutas'
-    path("crm/", include("crm.urls")),
+    path("crm/", include(("crm.urls", "crm"), namespace="crm")),
 ]

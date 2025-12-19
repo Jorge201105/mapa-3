@@ -5,12 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Planificador de Rutas{% endblock %}</title>
     {% load static %}
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=99">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
     <header>
         <h1>Planificador de Rutas de Distribución</h1>
+        <nav class="main-nav">
+          <a href="{% url 'mapa' %}"
+            class="{% if request.resolver_match.url_name == 'mapa' %}active{% endif %}">
+            🗺️ Rutas
+          </a>
+          <a href="{% url 'crm:crear_cliente' %}"
+            class="{% if request.resolver_match.url_name == 'crear_cliente' %}active{% endif %}">
+            ➕ Crear cliente
+          </a>
+
+          <a href="{% url 'crm:clientes_list' %}"
+            class="{% if request.resolver_match.url_name == 'clientes_list' %}active{% endif %}">
+            Clientes
+          </a>
+          <a href="{% url 'crm:ventas_list' %}"
+            class="{% if request.resolver_match.url_name == 'ventas_list' %}active{% endif %}">
+            💰 Ventas
+          </a>
+          <a href="{% url 'crm:buscar_cliente_telefono' %}">🔎 Buscar teléfono</a>
+        </nav>
     </header>
 
     <main>
