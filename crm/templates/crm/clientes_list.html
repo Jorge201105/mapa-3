@@ -13,6 +13,7 @@
 <table>
   <thead>
     <tr>
+      <th>ID</th>   <!-- 👈 NUEVO -->
       <th>Nombre</th>
       <th>Teléfono</th>
       <th>Email</th>
@@ -25,6 +26,7 @@
   <tbody>
   {% for c in clientes %}
     <tr>
+      <td>{{ c.id }}</td>   <!-- 👈 AQUÍ -->
       <td>{{ c.nombre }}</td>
       <td>{{ c.telefono }}</td>
       <td>{{ c.email }}</td>

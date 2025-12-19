@@ -21,7 +21,7 @@ def cliente_creado(request):
 from .models import Cliente
 
 def clientes_list(request):
-    clientes = Cliente.objects.all().order_by("-creado_en")
+    clientes = Cliente.objects.all().order_by("id")
     return render(request, "crm/clientes_list.html", {"clientes": clientes})
 
 from django.shortcuts import get_object_or_404
@@ -58,7 +58,7 @@ from .forms_ventas import VentaForm
 
 
 def ventas_list(request):
-    ventas = Venta.objects.select_related("cliente").order_by("-fecha")
+    ventas = Venta.objects.select_related("cliente").order_by("id")
     return render(request, "crm/ventas_list.html", {"ventas": ventas})
 
 
