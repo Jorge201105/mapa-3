@@ -10,6 +10,90 @@
   </a>
 </p>
 
+<!-- 🔎 FILTROS -->
+<form method="get"
+      class="filters"
+      style="margin-bottom:12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+
+  <!-- ⬆️⬇️ ORDEN ID -->
+  <label>ID:</label>
+  <select name="orden_id">
+    <option value="desc"
+            {% if f.orden_id == "desc" or not f.orden_id %}selected{% endif %}>
+      Más nuevo
+    </option>
+    <option value="asc"
+            {% if f.orden_id == "asc" %}selected{% endif %}>
+      Más antiguo
+    </option>
+  </select>
+
+  <!-- 📄 Documento -->
+  <label>Documento:</label>
+  <select name="tipo_documento">
+    <option value="">Todos</option>
+    <option value="boleta"
+            {% if f.tipo_documento == "boleta" %}selected{% endif %}>
+      Boleta
+    </option>
+    <option value="factura"
+            {% if f.tipo_documento == "factura" %}selected{% endif %}>
+      Factura
+    </option>
+    <option value="sin_doc"
+            {% if f.tipo_documento == "sin_doc" %}selected{% endif %}>
+      Sin documento
+    </option>
+  </select>
+
+  <!-- 📲 Canal -->
+  <label>Canal:</label>
+  <select name="canal">
+    <option value="">Todos</option>
+    <option value="instagram"
+            {% if f.canal == "instagram" %}selected{% endif %}>
+      Instagram
+    </option>
+    <option value="whatsapp"
+            {% if f.canal == "whatsapp" %}selected{% endif %}>
+      WhatsApp
+    </option>
+    <option value="web"
+            {% if f.canal == "web" %}selected{% endif %}>
+      Web
+    </option>
+    <option value="otro"
+            {% if f.canal == "otro" %}selected{% endif %}>
+      Otro
+    </option>
+  </select>
+
+  <!-- ⚖️ Kilos -->
+  <label>Kilos:</label>
+  <input type="number"
+         step="0.01"
+         name="min_kilos"
+         placeholder="Min"
+         value="{{ f.min_kilos }}"
+         style="width:80px;">
+
+  <input type="number"
+         step="0.01"
+         name="max_kilos"
+         placeholder="Max"
+         value="{{ f.max_kilos }}"
+         style="width:80px;">
+
+  <!-- 🔘 Botones -->
+  <button type="submit" class="btn btn-primary">
+    Filtrar
+  </button>
+
+  <a href="{% url 'crm:ventas_list' %}" class="btn btn-secondary">
+    Limpiar
+  </a>
+</form>
+
 <!-- 👇 WRAPPER PARA SCROLL HORIZONTAL -->
 <div class="table-wrap">
   <table>
@@ -18,6 +102,7 @@
         <th>ID</th>
         <th>Cliente</th>
         <th>Fecha</th>
+        <th>Documento</th>
         <th>Kilos</th>
         <th>Canal</th>
         <th>Acciones</th>
@@ -29,9 +114,25 @@
       <tr>
         <td>{{ v.id }}</td>
         <td>{{ v.cliente }}</td>
-        <td>{{ v.fecha }}</td>
+        <td>{{ v.fecha|date:"d-m-Y H:i" }}</td>
+
+        <!-- 📄 BOLETA / FACTURA / SIN DOC -->
+        <td>
+          {% if v.tipo_documento != "sin_doc" %}
+            {{ v.get_tipo_documento_display }}
+            {% if v.numero_documento %}
+              {{ v.numero_documento }}
+            {% else %}
+              —
+            {% endif %}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+
         <td>{{ v.total|floatformat:0 }}</td>
-        <td>{{ v.canal }}</td>
+        <td>{{ v.get_canal_display }}</td>
+
         <td>
           <div class="acciones">
             <a class="btn btn-edit"
@@ -54,7 +155,7 @@
       </tr>
     {% empty %}
       <tr>
-        <td colspan="6">No hay ventas.</td>
+        <td colspan="7">No hay ventas.</td>
       </tr>
     {% endfor %}
     </tbody>

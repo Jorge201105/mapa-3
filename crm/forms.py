@@ -1,5 +1,6 @@
 from django import forms
-from .models import Cliente
+from .models import Cliente, Venta
+
 
 class ClienteForm(forms.ModelForm):
     class Meta:
@@ -9,11 +10,9 @@ class ClienteForm(forms.ModelForm):
     def clean_telefono(self):
         telefono = (self.cleaned_data.get("telefono") or "").strip()
 
-        # Si está vacío, no validamos duplicados
         if not telefono:
             return telefono
 
-        # Evitar duplicado por teléfono, pero permitiendo editar el mismo registro
         qs = Cliente.objects.filter(telefono=telefono)
         if self.instance and self.instance.pk:
             qs = qs.exclude(pk=self.instance.pk)
@@ -22,3 +21,28 @@ class ClienteForm(forms.ModelForm):
             raise forms.ValidationError("Ya existe un cliente con ese teléfono.")
 
         return telefono
+
+
+class VentaForm(forms.ModelForm):
+    class Meta:
+        model = Venta
+        fields = [
+            "cliente",
+            "tipo_documento",
+            "numero_documento",
+            "canal",
+            "total",
+        ]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        tipo = cleaned_data.get("tipo_documento")
+        numero = (cleaned_data.get("numero_documento") or "").strip()
+
+        if tipo != Venta.TipoDocumento.SIN_DOC and not numero:
+            self.add_error(
+                "numero_documento",
+                "Debes ingresar el número de la factura o boleta."
+            )
+
+        return cleaned_data

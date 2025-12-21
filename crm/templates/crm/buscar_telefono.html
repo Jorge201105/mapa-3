@@ -25,8 +25,8 @@
     <p><strong>Dirección:</strong> {{ cliente.direccion }}</p>
 
     <p>
-      <a class="btn btn-edit" href="{% url 'crm:editar_cliente' cliente.id %}">Editar cliente</a>
-      <a class="btn btn-primary"
+      <a class="btn btn-edit" href="{% url 'crm:editar_cliente' cliente.id %}"> ✏️ Editar cliente</a>
+      <a class="btn btn-edit"
         href="{% url 'crm:venta_nueva' %}?cliente={{ cliente.id }}">
         ➕ Agregar venta
       </a>

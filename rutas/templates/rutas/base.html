@@ -30,6 +30,10 @@
             💰 Ventas
           </a>
           <a href="{% url 'crm:buscar_cliente_telefono' %}">🔎 Buscar teléfono</a>
+          <a href="{% url 'crm:buscar_cliente_nombre' %}"
+            class="{% if request.resolver_match.url_name == 'buscar_cliente_nombre' %}active{% endif %}">
+            👤 Buscar por Nombre
+          </a>
         </nav>
     </header>
 

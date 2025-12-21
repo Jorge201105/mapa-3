@@ -5,8 +5,9 @@ from django.views.decorators.http import require_POST
 from django.db.models import Sum, Count, Max, Value, DecimalField
 from django.db.models.functions import Coalesce
 
-from .forms import ClienteForm
-from .forms_ventas import VentaForm
+# ✅ IMPORTS CORRECTOS: VentaForm sale de forms.py (el que incluye tipo_documento y numero_documento)
+from .forms import ClienteForm, VentaForm
+
 from .models import Cliente, Venta
 
 
@@ -28,44 +29,35 @@ def cliente_creado(request):
 
 
 def clientes_list(request):
-    # -------- leer filtros desde querystring --------
-    segmento = (request.GET.get("segmento") or "").strip()   # VIP/Frecuente/Dormido/Ocasional
+    segmento = (request.GET.get("segmento") or "").strip()
     comuna = (request.GET.get("comuna") or "").strip()
     min_kilos = (request.GET.get("min_kilos") or "").strip()
-    orden = (request.GET.get("orden") or "kilos_desc").strip()  # kilos_desc / kilos_asc / id
+    orden = (request.GET.get("orden") or "kilos_desc").strip()
 
-    # -------- queryset base con métricas --------
     clientes_qs = (
         Cliente.objects
         .annotate(
-            # Coalesce para que los que no tienen ventas queden en 0 (no None)
             gasto_total=Coalesce(Sum("ventas__total"), Value(0), output_field=DecimalField()),
             compras=Count("ventas", distinct=True),
             ultima_compra=Max("ventas__fecha"),
         )
     )
 
-    # -------- filtro por comuna --------
     if comuna:
         clientes_qs = clientes_qs.filter(comuna__iexact=comuna)
 
-    # -------- filtro por mínimo kilos --------
     if min_kilos:
         try:
             clientes_qs = clientes_qs.filter(gasto_total__gte=float(min_kilos))
         except ValueError:
             pass
 
-    # -------- filtro por segmento (property -> Python) --------
-    # OJO: aquí convertimos a lista si hay filtro de segmento.
     if segmento:
         clientes = [c for c in clientes_qs if c.segmento == segmento]
     else:
         clientes = clientes_qs
 
-    # -------- orden --------
     if isinstance(clientes, list):
-        # ordenar lista (cuando filtraste por segmento)
         if orden == "kilos_asc":
             clientes.sort(key=lambda x: (x.gasto_total or 0, x.id))
         elif orden == "kilos_desc":
@@ -73,7 +65,6 @@ def clientes_list(request):
         else:
             clientes.sort(key=lambda x: x.id)
     else:
-        # ordenar queryset (sin filtro por segmento)
         if orden == "kilos_asc":
             clientes = clientes.order_by("gasto_total", "id")
         elif orden == "kilos_desc":
@@ -81,7 +72,6 @@ def clientes_list(request):
         else:
             clientes = clientes.order_by("id")
 
-    # -------- lista de comunas para el select --------
     comunas = (
         Cliente.objects.exclude(comuna="")
         .values_list("comuna", flat=True)
@@ -95,7 +85,7 @@ def clientes_list(request):
         {
             "clientes": clientes,
             "comunas": comunas,
-            "f": request.GET,  # para mantener seleccionado en el form
+            "f": request.GET,
         },
     )
 
@@ -125,12 +115,56 @@ def borrar_cliente(request, cliente_id):
 
 
 def ventas_list(request):
-    ventas = Venta.objects.select_related("cliente").order_by("id")
-    return render(request, "crm/ventas_list.html", {"ventas": ventas})
+    tipo_doc = (request.GET.get("tipo_documento") or "").strip()
+    canal = (request.GET.get("canal") or "").strip()
+    orden_id = (request.GET.get("orden_id") or "desc").strip()  # asc | desc
+    min_kilos = (request.GET.get("min_kilos") or "").strip()
+    max_kilos = (request.GET.get("max_kilos") or "").strip()
+
+    ventas = Venta.objects.select_related("cliente")
+
+    # 🔎 Filtro por tipo de documento
+    if tipo_doc in ["boleta", "factura", "sin_doc"]:
+        ventas = ventas.filter(tipo_documento=tipo_doc)
+
+    # 🔎 Filtro por canal
+    if canal:
+        ventas = ventas.filter(canal=canal)
+
+    # 🔎 Filtro por kilos
+    if min_kilos:
+        try:
+            ventas = ventas.filter(total__gte=float(min_kilos))
+        except ValueError:
+            pass
+
+    if max_kilos:
+        try:
+            ventas = ventas.filter(total__lte=float(max_kilos))
+        except ValueError:
+            pass
+
+    # ⬆️⬇️ Orden por ID
+    if orden_id == "asc":
+        ventas = ventas.order_by("id")
+    else:
+        ventas = ventas.order_by("-id")
+
+    return render(
+        request,
+        "crm/ventas_list.html",
+        {
+            "ventas": ventas,
+            "f": request.GET,
+        },
+    )
+
+
+
 
 
 def venta_nueva(request):
-    cliente_id = request.GET.get("cliente")  # <-- viene desde ?cliente=ID
+    cliente_id = request.GET.get("cliente")  # viene desde ?cliente=ID
 
     if request.method == "POST":
         form = VentaForm(request.POST)
@@ -186,3 +220,18 @@ def buscar_cliente_telefono(request):
         "crm/buscar_telefono.html",
         {"cliente": cliente, "buscado": buscado},
     )
+
+
+def buscar_cliente_por_nombre(request):
+    cliente = None
+    query = ""
+
+    if request.method == "POST":
+        query = request.POST.get("nombre", "").strip()
+        if query:
+            cliente = Cliente.objects.filter(nombre__icontains=query).first()
+
+    return render(request, "crm/buscar_cliente_nombre.html", {
+        "cliente": cliente,
+        "query": query
+    })
