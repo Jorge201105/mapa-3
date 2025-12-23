@@ -8,6 +8,7 @@ class Cliente(models.Model):
     email = models.EmailField(blank=True, db_index=True)
     comuna = models.CharField(max_length=80, blank=True)
     direccion = models.CharField(max_length=200, blank=True)
+    observaciones = models.TextField(blank=True)  # 👈 NUEVO
     creado_en = models.DateTimeField(auto_now_add=True)
 
     @property
@@ -51,6 +52,8 @@ class Venta(models.Model):
     fecha = models.DateTimeField(default=timezone.now, db_index=True)
     canal = models.CharField(max_length=20, choices=Canal.choices, default=Canal.OTRO)
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    observaciones = models.TextField(blank=True)  # 👈 NUEVO
+    
 
     # ✅ Nuevos campos
     tipo_documento = models.CharField(

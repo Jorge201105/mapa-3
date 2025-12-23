@@ -5,7 +5,7 @@ from .models import Cliente, Venta
 class ClienteForm(forms.ModelForm):
     class Meta:
         model = Cliente
-        fields = ["nombre", "telefono", "email", "comuna", "direccion"]
+        fields = ["nombre", "telefono", "email", "comuna", "direccion", "observaciones"]
 
     def clean_telefono(self):
         telefono = (self.cleaned_data.get("telefono") or "").strip()
@@ -32,6 +32,7 @@ class VentaForm(forms.ModelForm):
             "numero_documento",
             "canal",
             "total",
+            "observaciones",
         ]
 
     def clean(self):

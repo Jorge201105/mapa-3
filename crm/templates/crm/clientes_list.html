@@ -66,6 +66,7 @@
         <th>Dirección</th>
         <th>Kilos comprados</th>
         <th>Segmento</th>
+        <th>Observaciones</th>
         <th>Acciones</th>
       </tr>
     </thead>
@@ -76,7 +77,16 @@
         <td>{{ c.id }}</td>
         <td>{{ c.nombre }}</td>
         <td>{{ c.telefono }}</td>
-        <td>{{ c.email }}</td>
+        <td>
+          {% if c.email %}
+            <span title="{{ c.email }}">
+              {{ c.email|truncatechars:18 }}
+            </span>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+
         <td>{{ c.comuna }}</td>
         <td>{{ c.direccion }}</td>
         <td>{{ c.gasto_total|default:0|floatformat:0 }} kg</td>
@@ -84,6 +94,9 @@
           <span class="flag flag-{{ c.segmento_color }}">
             {{ c.segmento }}
           </span>
+        </td>
+        <td>
+          {{ c.observaciones|default:"—"|truncatechars:40 }}
         </td>
         <td>
           <div class="acciones">
