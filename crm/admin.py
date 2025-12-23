@@ -1,8 +1,23 @@
 from django.contrib import admin
 from django.db.models import Sum, Count, Max
-from .models import Cliente, Venta, VentaItem
+from .models import Cliente, Producto, Venta, VentaItem  # ✅ agrega Producto
 from .services import segmentar_cliente
 
+
+# =========================
+# PRODUCTOS ✅ NUEVO
+# =========================
+@admin.register(Producto)
+class ProductoAdmin(admin.ModelAdmin):
+    list_display = ("sku", "nombre", "peso_kg", "activo")
+    list_filter = ("activo",)
+    search_fields = ("sku", "nombre")
+    ordering = ("nombre",)
+
+
+# =========================
+# CLIENTES
+# =========================
 @admin.register(Cliente)
 class ClienteAdmin(admin.ModelAdmin):
     list_display = (
@@ -10,6 +25,7 @@ class ClienteAdmin(admin.ModelAdmin):
         "nombre",
         "telefono",
         "email",
+        "get_kilos_total",
         "get_gasto_total",
         "get_compras",
         "get_ultima_compra",
@@ -22,39 +38,73 @@ class ClienteAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.annotate(
-            gasto_total=Sum("ventas__total"),
+            kilos_total=Sum("ventas__kilos_total"),
+            gasto_total=Sum("ventas__monto_total"),
             compras=Count("ventas"),
             ultima_compra=Max("ventas__fecha"),
         )
 
+    # 🔹 Kilos acumulados
+    def get_kilos_total(self, obj):
+        return obj.kilos_total or 0
+    get_kilos_total.short_description = "Kilos totales"
+    get_kilos_total.admin_order_field = "kilos_total"
+
+    # 🔹 Gasto total en $
     def get_gasto_total(self, obj):
         return obj.gasto_total or 0
-    get_gasto_total.short_description = "Gasto total"
+    get_gasto_total.short_description = "Gasto total ($)"
     get_gasto_total.admin_order_field = "gasto_total"
 
+    # 🔹 Nº compras
     def get_compras(self, obj):
         return obj.compras
     get_compras.short_description = "N° compras"
     get_compras.admin_order_field = "compras"
 
+    # 🔹 Última compra
     def get_ultima_compra(self, obj):
         return obj.ultima_compra
     get_ultima_compra.short_description = "Última compra"
 
+    # 🔹 Segmento (usa tu lógica existente)
     def get_segmento(self, obj):
-        return segmentar_cliente(obj)
+        return segmentar_cliente(obj)[0]
     get_segmento.short_description = "Segmento"
 
 
+# =========================
+# VENTAS
+# =========================
 @admin.register(Venta)
 class VentaAdmin(admin.ModelAdmin):
-    list_display = ("id", "cliente", "fecha", "total", "canal")
-    list_filter = ("canal", "fecha")
+    list_display = (
+        "id",
+        "cliente",
+        "fecha",
+        "tipo_documento",
+        "numero_documento",
+        "kilos_total",
+        "monto_total",
+        "canal",
+    )
+    list_filter = ("canal", "fecha", "tipo_documento")
     date_hierarchy = "fecha"
+    search_fields = ("cliente__nombre", "numero_documento")
+    ordering = ("-id",)
 
 
+# =========================
+# ÍTEMS DE VENTA
+# =========================
 @admin.register(VentaItem)
 class VentaItemAdmin(admin.ModelAdmin):
-    list_display = ("venta", "producto", "cantidad", "precio_unitario")
-
-
+    list_display = (
+        "venta",
+        "producto",
+        "cantidad",
+        "precio_unitario",
+        "subtotal",
+    )
+    search_fields = ("producto__nombre", "producto__sku", "venta__cliente__nombre")
+    ordering = ("-id",)

@@ -4,6 +4,16 @@
 {% block content %}
 <h2>{% if modo == "editar" %}Editar{% else %}Nueva{% endif %} venta</h2>
 
+{% if modo == "editar" %}
+  <p>
+    <strong>Monto total ($):</strong>
+    $ {{ venta.monto_total|floatformat:0 }}
+    <br>
+    <strong>Kilos:</strong>
+    {{ venta.kilos_total|floatformat:2 }} kg
+  </p>
+{% endif %}
+
 <form method="post">
   {% csrf_token %}
   {{ form.as_p }}
@@ -11,4 +21,5 @@
   <button type="submit">Guardar</button>
   <a class="button-secondary" href="{% url 'crm:ventas_list' %}">Volver</a>
 </form>
+
 {% endblock %}

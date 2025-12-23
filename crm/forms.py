@@ -1,5 +1,5 @@
 from django import forms
-from .models import Cliente, Venta
+from .models import Cliente, Venta, VentaItem
 
 
 class ClienteForm(forms.ModelForm):
@@ -28,10 +28,11 @@ class VentaForm(forms.ModelForm):
         model = Venta
         fields = [
             "cliente",
+            "fecha",
             "tipo_documento",
             "numero_documento",
             "canal",
-            "total",
+            "kilos_total",      # ✅ kilos (antes era total)
             "observaciones",
         ]
 
@@ -40,10 +41,20 @@ class VentaForm(forms.ModelForm):
         tipo = cleaned_data.get("tipo_documento")
         numero = (cleaned_data.get("numero_documento") or "").strip()
 
+        # ✅ si NO es sin_doc, exige número
         if tipo != Venta.TipoDocumento.SIN_DOC and not numero:
             self.add_error(
                 "numero_documento",
                 "Debes ingresar el número de la factura o boleta."
             )
 
+        # Limpia el número (por si venía con espacios)
+        cleaned_data["numero_documento"] = numero
+
         return cleaned_data
+
+
+class VentaItemForm(forms.ModelForm):
+    class Meta:
+        model = VentaItem
+        fields = ["producto", "cantidad", "precio_unitario"]

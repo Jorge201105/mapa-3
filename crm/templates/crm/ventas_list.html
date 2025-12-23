@@ -28,53 +28,40 @@
     </option>
   </select>
 
-<!-- 📄 Documento -->
-<label>Documento:</label>
-<select name="tipo_documento">
-  <option value="">Todos</option>
+  <!-- 📄 Documento -->
+  <label>Documento:</label>
+  <select name="tipo_documento">
+    <option value="">Todos</option>
 
-  <option value="boleta"
-          {% if f.tipo_documento == "boleta" %}selected{% endif %}>
-    Boleta
-  </option>
+    <option value="boleta"
+            {% if f.tipo_documento == "boleta" %}selected{% endif %}>
+      Boleta
+    </option>
 
-  <option value="factura"
-          {% if f.tipo_documento == "factura" %}selected{% endif %}>
-    Factura
-  </option>
+    <option value="factura"
+            {% if f.tipo_documento == "factura" %}selected{% endif %}>
+      Factura
+    </option>
 
-  <option value="nota_credito"
-          {% if f.tipo_documento == "nota_credito" %}selected{% endif %}>
-    Nota crédito
-  </option>
+    <option value="nota_credito"
+            {% if f.tipo_documento == "nota_credito" %}selected{% endif %}>
+      Nota crédito
+    </option>
 
-  <option value="sin_doc"
-          {% if f.tipo_documento == "sin_doc" %}selected{% endif %}>
-    Sin documento
-  </option>
-</select>
-
+    <option value="sin_doc"
+            {% if f.tipo_documento == "sin_doc" %}selected{% endif %}>
+      Sin documento
+    </option>
+  </select>
 
   <!-- 📲 Canal -->
   <label>Canal:</label>
   <select name="canal">
     <option value="">Todos</option>
-    <option value="instagram"
-            {% if f.canal == "instagram" %}selected{% endif %}>
-      Instagram
-    </option>
-    <option value="whatsapp"
-            {% if f.canal == "whatsapp" %}selected{% endif %}>
-      WhatsApp
-    </option>
-    <option value="web"
-            {% if f.canal == "web" %}selected{% endif %}>
-      Web
-    </option>
-    <option value="otro"
-            {% if f.canal == "otro" %}selected{% endif %}>
-      Otro
-    </option>
+    <option value="instagram" {% if f.canal == "instagram" %}selected{% endif %}>Instagram</option>
+    <option value="whatsapp"  {% if f.canal == "whatsapp" %}selected{% endif %}>WhatsApp</option>
+    <option value="web"       {% if f.canal == "web" %}selected{% endif %}>Web</option>
+    <option value="otro"      {% if f.canal == "otro" %}selected{% endif %}>Otro</option>
   </select>
 
   <!-- ⚖️ Kilos -->
@@ -113,6 +100,7 @@
         <th>Fecha</th>
         <th>Documento</th>
         <th>Kilos</th>
+        <th>Total ($)</th>   {# ✅ NUEVO #}
         <th>Canal</th>
         <th>Observaciones</th>
         <th>Acciones</th>
@@ -140,16 +128,29 @@
           {% endif %}
         </td>
 
-        <td>{{ v.total|floatformat:0 }}</td>
+        <!-- ⚖️ Kilos (antes era v.total) -->
+        <td>{{ v.kilos_total|floatformat:2 }}</td>
+
+        <!-- 💰 Pesos -->
+        <td>$ {{ v.monto_total|floatformat:0 }}</td>
+
         <td>{{ v.get_canal_display }}</td>
+
         <td>
           {{ v.observaciones|default:"—"|truncatechars:40 }}
         </td>
 
         <td>
           <div class="acciones">
+
+            <!-- ✅ NUEVO: botón Ítems -->
+            <a class="btn btn-secondary"
+              href="{% url 'crm:venta_detalle' v.id %}">
+              Ítems
+            </a>
+
             <a class="btn btn-edit"
-               href="{% url 'crm:venta_editar' v.id %}">
+              href="{% url 'crm:venta_editar' v.id %}">
               Editar
             </a>
 
@@ -165,10 +166,12 @@
             </form>
           </div>
         </td>
+
+
       </tr>
     {% empty %}
       <tr>
-        <td colspan="8">No hay ventas.</td>
+        <td colspan="9">No hay ventas.</td>
       </tr>
     {% endfor %}
     </tbody>

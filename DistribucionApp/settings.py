@@ -46,8 +46,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rutas',   # tu app
-    'crm', # clientes
+    "rutas.apps.RutasConfig",
+    "crm.apps.CrmConfig",
 ]
 
 # ==========================
