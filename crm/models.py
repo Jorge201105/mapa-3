@@ -47,6 +47,7 @@ class Venta(models.Model):
         SIN_DOC = "sin_doc", "Sin documento"
         BOLETA = "boleta", "Boleta"
         FACTURA = "factura", "Factura"
+        NOTA_CREDITO = "nota_credito", "Nota crédito"
 
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="ventas")
     fecha = models.DateTimeField(default=timezone.now, db_index=True)
@@ -65,7 +66,7 @@ class Venta(models.Model):
     numero_documento = models.CharField(
         max_length=30,
         blank=True,
-        verbose_name="N° Factura / Boleta",
+        verbose_name="N° Factura / Boleta / Nota Crédito",
         db_index=True,
     )
 

@@ -28,23 +28,32 @@
     </option>
   </select>
 
-  <!-- 📄 Documento -->
-  <label>Documento:</label>
-  <select name="tipo_documento">
-    <option value="">Todos</option>
-    <option value="boleta"
-            {% if f.tipo_documento == "boleta" %}selected{% endif %}>
-      Boleta
-    </option>
-    <option value="factura"
-            {% if f.tipo_documento == "factura" %}selected{% endif %}>
-      Factura
-    </option>
-    <option value="sin_doc"
-            {% if f.tipo_documento == "sin_doc" %}selected{% endif %}>
-      Sin documento
-    </option>
-  </select>
+<!-- 📄 Documento -->
+<label>Documento:</label>
+<select name="tipo_documento">
+  <option value="">Todos</option>
+
+  <option value="boleta"
+          {% if f.tipo_documento == "boleta" %}selected{% endif %}>
+    Boleta
+  </option>
+
+  <option value="factura"
+          {% if f.tipo_documento == "factura" %}selected{% endif %}>
+    Factura
+  </option>
+
+  <option value="nota_credito"
+          {% if f.tipo_documento == "nota_credito" %}selected{% endif %}>
+    Nota crédito
+  </option>
+
+  <option value="sin_doc"
+          {% if f.tipo_documento == "sin_doc" %}selected{% endif %}>
+    Sin documento
+  </option>
+</select>
+
 
   <!-- 📲 Canal -->
   <label>Canal:</label>
@@ -159,7 +168,7 @@
       </tr>
     {% empty %}
       <tr>
-        <td colspan="7">No hay ventas.</td>
+        <td colspan="8">No hay ventas.</td>
       </tr>
     {% endfor %}
     </tbody>

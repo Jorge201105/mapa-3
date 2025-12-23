@@ -124,7 +124,7 @@ def ventas_list(request):
     ventas = Venta.objects.select_related("cliente")
 
     # 🔎 Filtro por tipo de documento
-    if tipo_doc in ["boleta", "factura", "sin_doc"]:
+    if tipo_doc in ["boleta", "factura", "sin_doc", "nota_credito"]:
         ventas = ventas.filter(tipo_documento=tipo_doc)
 
     # 🔎 Filtro por canal
