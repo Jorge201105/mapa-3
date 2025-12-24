@@ -3,6 +3,23 @@
 
 {% block content %}
 <h2>Resumen mensual</h2>
+<form method="get" style="margin: 12px 0; display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+  <div>
+    <label><strong>Desde</strong></label><br>
+    <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}">
+  </div>
+
+  <div>
+    <label><strong>Hasta</strong></label><br>
+    <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}">
+  </div>
+
+  <button class="btn btn-primary" type="submit">Aplicar</button>
+
+  <a class="btn btn-primary" href="{% url 'crm:resumen_mensual' %}">
+    Últimos 6 meses
+  </a>
+</form>
 
 <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
   <a class="btn btn-secondary" href="{% url 'crm:ventas_list' %}">Ver ventas</a>

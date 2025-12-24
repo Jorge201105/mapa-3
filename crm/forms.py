@@ -1,5 +1,5 @@
 from django import forms
-from .models import Cliente, Venta, VentaItem
+from .models import Cliente, Venta, VentaItem, Producto
 
 
 class ClienteForm(forms.ModelForm):
@@ -55,6 +55,13 @@ class VentaForm(forms.ModelForm):
 
 
 class VentaItemForm(forms.ModelForm):
+    # ✅ Campo explícito: aquí cargas los productos activos sí o sí
+    producto = forms.ModelChoiceField(
+        queryset=Producto.objects.filter(activo=True).order_by("nombre"),
+        empty_label="Seleccione producto...",
+        required=True,
+    )
+
     class Meta:
         model = VentaItem
-        fields = ["producto", "cantidad", "precio_unitario"]
+        fields = ("producto", "cantidad", "precio_unitario")

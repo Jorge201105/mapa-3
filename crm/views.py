@@ -1,24 +1,138 @@
+
+# crm/views.py
 from decimal import Decimal
+from datetime import timedelta
+
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.db.models import (
+    Sum, Count, Max, Value, DecimalField, Q, DateField,
+)
+from django.db.models.functions import Coalesce, TruncMonth
+from django.shortcuts import render, get_object_or_404, redirect
+from django.utils import timezone
+from django.utils.dateparse import parse_date
+from django.views.decorators.http import require_POST
+
+from .models import Cliente, Venta, VentaItem, Producto, Importacion, GastoOperacional
+from .forms import ClienteForm, VentaForm, VentaItemForm
+
+
+
+# crm/views.py
+
 import json
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.views.decorators.http import require_POST
-from django.utils import timezone
 
 from django.db.models import (
     Sum, Count, Max, Q, F, Value,
     DecimalField, ExpressionWrapper
 )
 from django.db.models.functions import Coalesce, TruncMonth
+from django.utils import timezone
 
 from .forms import ClienteForm, VentaForm, VentaItemForm
-from .models import Cliente, Venta, VentaItem, Producto, GastoOperacional
+from .models import Cliente, Venta, VentaItem, Producto, Importacion, GastoOperacional
 
-from .services import costo_promedio_kg
-# -----------------
+
+# -------------------------
+# Helpers
+# -------------------------
+def mes_key(value):
+    """
+    Normaliza cualquier fecha/datetime al primer día del mes (date)
+    para que las llaves calcen entre Venta.fecha (DateTimeField)
+    y GastoOperacional.fecha (DateField).
+    """
+    if value is None:
+        return None
+    if hasattr(value, "date"):
+        value = value.date()
+    return value.replace(day=1)
+
+
+# -------------------------
 # CLIENTES
-# -----------------
+# -------------------------
+def clientes_list(request):
+    segmento = request.GET.get("segmento", "").strip()
+    comuna = request.GET.get("comuna", "").strip()
+    min_kilos = request.GET.get("min_kilos", "").strip()
+    orden = request.GET.get("orden", "").strip()
+
+    qs = (
+        Cliente.objects.all()
+        .annotate(
+            kilos_acumulados=Coalesce(
+                Sum("ventas__kilos_total"),
+                Value(Decimal("0.00")),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            gasto_total=Coalesce(
+                Sum("ventas__monto_total"),
+                Value(Decimal("0.00")),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            ultima=Max("ventas__fecha"),
+            freq=Coalesce(
+                Count("ventas"),
+                Value(0),
+            ),
+        )
+    )
+
+    if comuna:
+        qs = qs.filter(comuna=comuna)
+
+    if min_kilos:
+        try:
+            mk = Decimal(min_kilos)
+            qs = qs.filter(kilos_acumulados__gte=mk)
+        except Exception:
+            pass
+
+    # Orden
+    if orden == "kilos_asc":
+        qs = qs.order_by("kilos_acumulados", "id")
+    elif orden == "gasto_desc":
+        qs = qs.order_by("-gasto_total", "-id")
+    elif orden == "gasto_asc":
+        qs = qs.order_by("gasto_total", "id")
+    elif orden == "id":
+        qs = qs.order_by("id")
+    else:
+        qs = qs.order_by("-kilos_acumulados", "-id")
+
+    clientes = list(qs)
+
+    # Segmento (si lo calculas en @property o service, filtra en Python)
+    if segmento:
+        clientes = [c for c in clientes if getattr(c, "segmento", "") == segmento]
+
+    comunas = (
+        Cliente.objects.exclude(comuna="")
+        .values_list("comuna", flat=True)
+        .distinct()
+        .order_by("comuna")
+    )
+
+    context = {
+        "clientes": clientes,
+        "comunas": comunas,
+        "f": {
+            "segmento": segmento,
+            "comuna": comuna,
+            "min_kilos": min_kilos,
+            "orden": orden,
+        },
+    }
+    return render(request, "crm/clientes_list.html", context)
+
+
+
 def crear_cliente(request):
     if request.method == "POST":
         form = ClienteForm(request.POST)
@@ -31,81 +145,6 @@ def crear_cliente(request):
     return render(request, "crm/cliente_form.html", {"form": form, "modo": "crear"})
 
 
-def clientes_list(request):
-    segmento = (request.GET.get("segmento") or "").strip()
-    comuna = (request.GET.get("comuna") or "").strip()
-    min_kilos = (request.GET.get("min_kilos") or "").strip()
-    orden = (request.GET.get("orden") or "kilos_desc").strip()
-
-    dec_money = DecimalField(max_digits=12, decimal_places=2)
-    dec_kilos = DecimalField(max_digits=12, decimal_places=2)
-
-    clientes_qs = (
-        Cliente.objects.annotate(
-            kilos_acumulados=Coalesce(
-                Sum("ventas__kilos_total"), Value(0), output_field=dec_kilos
-            ),
-            gasto_total=Coalesce(
-                Sum("ventas__monto_total"), Value(0), output_field=dec_money
-            ),
-            compras=Count("ventas", distinct=True),
-            ultima_compra=Max("ventas__fecha"),
-        )
-    )
-
-    if comuna:
-        clientes_qs = clientes_qs.filter(comuna__iexact=comuna)
-
-    if min_kilos:
-        try:
-            clientes_qs = clientes_qs.filter(kilos_acumulados__gte=float(min_kilos))
-        except ValueError:
-            pass
-
-    # filtro por segmento (tu segmento es @property)
-    if segmento:
-        clientes = [c for c in clientes_qs if c.segmento == segmento]
-    else:
-        clientes = clientes_qs
-
-    # Orden
-    if isinstance(clientes, list):
-        if orden == "kilos_asc":
-            clientes.sort(key=lambda x: (x.kilos_acumulados or 0, x.id))
-        elif orden == "kilos_desc":
-            clientes.sort(key=lambda x: (x.kilos_acumulados or 0, x.id), reverse=True)
-        elif orden == "gasto_asc":
-            clientes.sort(key=lambda x: (x.gasto_total or 0, x.id))
-        elif orden == "gasto_desc":
-            clientes.sort(key=lambda x: (x.gasto_total or 0, x.id), reverse=True)
-        else:
-            clientes.sort(key=lambda x: x.id)
-    else:
-        if orden == "kilos_asc":
-            clientes = clientes.order_by("kilos_acumulados", "id")
-        elif orden == "kilos_desc":
-            clientes = clientes.order_by("-kilos_acumulados", "id")
-        elif orden == "gasto_asc":
-            clientes = clientes.order_by("gasto_total", "id")
-        elif orden == "gasto_desc":
-            clientes = clientes.order_by("-gasto_total", "id")
-        else:
-            clientes = clientes.order_by("id")
-
-    comunas = (
-        Cliente.objects.exclude(comuna="")
-        .values_list("comuna", flat=True)
-        .distinct()
-        .order_by("comuna")
-    )
-
-    return render(
-        request,
-        "crm/clientes_list.html",
-        {"clientes": clientes, "comunas": comunas, "f": request.GET},
-    )
-
-
 def editar_cliente(request, cliente_id):
     cliente = get_object_or_404(Cliente, id=cliente_id)
     if request.method == "POST":
@@ -116,6 +155,7 @@ def editar_cliente(request, cliente_id):
             return redirect("crm:clientes_list")
     else:
         form = ClienteForm(instance=cliente)
+
     return render(
         request,
         "crm/cliente_form.html",
@@ -126,90 +166,98 @@ def editar_cliente(request, cliente_id):
 @require_POST
 def borrar_cliente(request, cliente_id):
     cliente = get_object_or_404(Cliente, id=cliente_id)
-    nombre = cliente.nombre
     cliente.delete()
-    messages.success(request, f"Cliente eliminado: {nombre}")
+    messages.success(request, "Cliente borrado correctamente.")
     return redirect("crm:clientes_list")
 
 
-# -----------------
+# -------------------------
 # VENTAS
-# -----------------
+# -------------------------
 def ventas_list(request):
-    tipo_doc = (request.GET.get("tipo_documento") or "").strip()
-    canal = (request.GET.get("canal") or "").strip()
-    orden_id = (request.GET.get("orden_id") or "desc").strip()
-    min_kilos = (request.GET.get("min_kilos") or "").strip()
-    max_kilos = (request.GET.get("max_kilos") or "").strip()
+    orden_id = request.GET.get("orden_id", "desc")
+    tipo_documento = request.GET.get("tipo_documento", "").strip()
+    canal = request.GET.get("canal", "").strip()
+    min_kilos = request.GET.get("min_kilos", "").strip()
+    max_kilos = request.GET.get("max_kilos", "").strip()
 
-    ventas = Venta.objects.select_related("cliente")
+    qs = Venta.objects.select_related("cliente").all()
 
-    if tipo_doc in ["boleta", "factura", "sin_doc", "nota_credito"]:
-        ventas = ventas.filter(tipo_documento=tipo_doc)
+    if tipo_documento:
+        qs = qs.filter(tipo_documento=tipo_documento)
 
     if canal:
-        ventas = ventas.filter(canal=canal)
+        qs = qs.filter(canal=canal)
 
     if min_kilos:
         try:
-            ventas = ventas.filter(kilos_total__gte=float(min_kilos))
-        except ValueError:
+            qs = qs.filter(kilos_total__gte=Decimal(min_kilos))
+        except Exception:
             pass
 
     if max_kilos:
         try:
-            ventas = ventas.filter(kilos_total__lte=float(max_kilos))
-        except ValueError:
+            qs = qs.filter(kilos_total__lte=Decimal(max_kilos))
+        except Exception:
             pass
 
-    ventas = ventas.order_by("id") if orden_id == "asc" else ventas.order_by("-id")
+    if orden_id == "asc":
+        qs = qs.order_by("id")
+    else:
+        qs = qs.order_by("-id")
 
-    return render(request, "crm/ventas_list.html", {"ventas": ventas, "f": request.GET})
+    context = {
+        "ventas": qs,
+        "f": {
+            "orden_id": orden_id,
+            "tipo_documento": tipo_documento,
+            "canal": canal,
+            "min_kilos": min_kilos,
+            "max_kilos": max_kilos,
+        },
+    }
+    return render(request, "crm/ventas_list.html", context)
 
 
 def venta_nueva(request):
-    """
-    ✅ CAMBIO CLAVE:
-    - Al guardar la venta, redirige al detalle (/crm/ventas/<id>/) para agregar ítems.
-    - Si viene ?cliente=<id>, precarga el cliente.
-    """
+    # Preselección desde buscadores: /crm/ventas/nueva/?cliente=ID
     cliente_id = request.GET.get("cliente")
+    initial = {}
+    if cliente_id:
+        try:
+            initial["cliente"] = Cliente.objects.get(id=int(cliente_id))
+        except Exception:
+            pass
 
     if request.method == "POST":
         form = VentaForm(request.POST)
         if form.is_valid():
             venta = form.save()
-            messages.success(
-                request, "Venta creada. Ahora agrega los ítems para calcular el total ($)."
-            )
+            messages.success(request, "Venta creada. Ahora agrega ítems.")
+            # ✅ flujo natural: después de crear, ir a detalle para ingresar ítems
             return redirect("crm:venta_detalle", venta_id=venta.id)
     else:
-        initial = {}
-        if cliente_id:
-            initial["cliente"] = cliente_id
         form = VentaForm(initial=initial)
 
     return render(request, "crm/venta_form.html", {"form": form, "modo": "crear"})
 
 
 def venta_editar(request, venta_id):
-    """
-    ✅ CAMBIO:
-    - Al guardar edición, vuelve al detalle para seguir agregando ítems.
-    """
     venta = get_object_or_404(Venta, id=venta_id)
 
     if request.method == "POST":
         form = VentaForm(request.POST, instance=venta)
         if form.is_valid():
-            venta = form.save()
+            form.save()
             messages.success(request, "Venta actualizada correctamente.")
             return redirect("crm:venta_detalle", venta_id=venta.id)
     else:
         form = VentaForm(instance=venta)
 
     return render(
-        request, "crm/venta_form.html", {"form": form, "modo": "editar", "venta": venta}
+        request,
+        "crm/venta_form.html",
+        {"form": form, "modo": "editar", "venta": venta},
     )
 
 
@@ -217,31 +265,27 @@ def venta_editar(request, venta_id):
 def venta_borrar(request, venta_id):
     venta = get_object_or_404(Venta, id=venta_id)
     venta.delete()
-    messages.success(request, "Venta eliminada.")
+    messages.success(request, "Venta borrada.")
     return redirect("crm:ventas_list")
 
 
 # -----------------
-# ✅ DETALLE + ÍTEMS
+# VENTA DETALLE + ITEMS
 # -----------------
 def venta_detalle(request, venta_id):
     venta = get_object_or_404(Venta, id=venta_id)
     items = venta.items.select_related("producto").all().order_by("id")
     form_item = VentaItemForm()
 
-    # ✅ lista de productos activos para armar el <select> con data-precio
+    # Para poblar tu <select> manual en template (productos)
     productos = Producto.objects.filter(activo=True).order_by("nombre")
 
     return render(
         request,
         "crm/venta_detalle.html",
-        {
-            "venta": venta,
-            "items": items,
-            "form_item": form_item,
-            "productos": productos,
-        },
+        {"venta": venta, "items": items, "form_item": form_item, "productos": productos},
     )
+
 
 @require_POST
 def venta_item_agregar(request, venta_id):
@@ -254,7 +298,6 @@ def venta_item_agregar(request, venta_id):
         messages.success(request, "Ítem agregado.")
     else:
         messages.error(request, "No se pudo agregar el ítem. Revisa los campos.")
-
     return redirect("crm:venta_detalle", venta_id=venta.id)
 
 
@@ -265,151 +308,9 @@ def venta_item_borrar(request, item_id):
     item.delete()
     messages.success(request, "Ítem eliminado.")
     return redirect("crm:venta_detalle", venta_id=venta_id)
-
-
-# -----------------
-# ✅ RESUMEN MENSUAL
-# -----------------
-
-
-
-def resumen_mensual(request):
-    hoy = timezone.localdate()
-    inicio_mes = hoy.replace(day=1)
-    desde = inicio_mes - timezone.timedelta(days=180)  # ~6 meses
-
-    # -----------------------------
-    # 1) Ventas por mes
-    # -----------------------------
-    qs_ventas = (
-        Venta.objects
-        .filter(fecha__date__gte=desde)  # Venta.fecha es DateTimeField => OK usar __date
-        .annotate(mes=TruncMonth("fecha"))
-        .values("mes")
-        .annotate(
-            kilos=Coalesce(
-                Sum("kilos_total"),
-                Value(0),
-                output_field=DecimalField(max_digits=12, decimal_places=2),
-            ),
-            ventas_brutas=Coalesce(
-                Sum("monto_total", filter=~Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO)),
-                Value(0),
-                output_field=DecimalField(max_digits=12, decimal_places=2),
-            ),
-            notas_credito=Coalesce(
-                Sum("monto_total", filter=Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO)),
-                Value(0),
-                output_field=DecimalField(max_digits=12, decimal_places=2),
-            ),
-            cantidad_ventas=Count("id"),
-        )
-        .order_by("-mes")
-    )
-
-    # -----------------------------
-    # 2) Gastos operacionales por mes
-    #    OJO: fecha es DateField => NO usar __date
-    # -----------------------------
-    qs_gastos = (
-        GastoOperacional.objects
-        .filter(fecha__gte=desde)
-        .annotate(mes=TruncMonth("fecha"))
-        .values("mes")
-        .annotate(
-            gastos_neto=Coalesce(
-                Sum("monto_neto"),
-                Value(0),
-                output_field=DecimalField(max_digits=12, decimal_places=2),
-            )
-        )
-    )
-
-    # Diccionario: mes -> gastos
-    gastos_por_mes = {g["mes"]: (g["gastos_neto"] or Decimal("0")) for g in qs_gastos}
-
-    # -----------------------------
-    # 3) Costo estimado por kg
-    # -----------------------------
-    costo_kg = costo_promedio_kg() or Decimal("0")  # neto por kg (idealmente)
-
-    # -----------------------------
-    # 4) Armar filas con margen/utilidad
-    # -----------------------------
-    filas = []
-    for r in qs_ventas:
-        mes = r["mes"]
-        kilos = r["kilos"] or Decimal("0")
-        ventas_brutas = r["ventas_brutas"] or Decimal("0")
-        notas = r["notas_credito"] or Decimal("0")
-
-        ventas_netas = ventas_brutas - notas
-
-        # Si tus ventas están CON IVA y quieres NETO real:
-        # neto = ventas_netas / 1.19
-        # Si tus ventas ya están en NETO, déjalo igual.
-        neto = ventas_netas
-
-        costo = (kilos * costo_kg).quantize(Decimal("0.01"))
-        margen_bruto = (neto - costo).quantize(Decimal("0.01"))
-
-        gastos = (gastos_por_mes.get(mes, Decimal("0"))).quantize(Decimal("0.01"))
-        utilidad = (margen_bruto - gastos).quantize(Decimal("0.01"))
-
-        filas.append(
-            {
-                "mes": mes,
-                "kilos": kilos,
-                "ventas_brutas": ventas_brutas,
-                "notas_credito": notas,
-                "ventas_netas": ventas_netas,
-                "neto": neto,
-                "costo": costo,
-                "margen_bruto": margen_bruto,
-                "gastos": gastos,
-                "utilidad": utilidad,
-                "cantidad_ventas": r["cantidad_ventas"],
-            }
-        )
-
-    # -----------------------------
-    # 5) Totales
-    # -----------------------------
-    total_kilos = sum((f["kilos"] for f in filas), Decimal("0"))
-    total_bruto = sum((f["ventas_brutas"] for f in filas), Decimal("0"))
-    total_notas = sum((f["notas_credito"] for f in filas), Decimal("0"))
-    total_ventas_netas = sum((f["ventas_netas"] for f in filas), Decimal("0"))
-    total_neto = sum((f["neto"] for f in filas), Decimal("0"))
-    total_costo = sum((f["costo"] for f in filas), Decimal("0"))
-    total_margen = sum((f["margen_bruto"] for f in filas), Decimal("0"))
-    total_gastos = sum((f["gastos"] for f in filas), Decimal("0"))
-    total_utilidad = sum((f["utilidad"] for f in filas), Decimal("0"))
-
-    return render(
-        request,
-        "crm/resumen_mensual.html",
-        {
-            "filas": filas,
-            "totales": {
-                "kilos": total_kilos,
-                "ventas_brutas": total_bruto,
-                "notas_credito": total_notas,
-                "ventas_netas": total_ventas_netas,
-                "neto": total_neto,
-                "costo": total_costo,
-                "margen_bruto": total_margen,
-                "gastos": total_gastos,
-                "utilidad": total_utilidad,
-            },
-            "desde": desde,
-            "hoy": hoy,
-            "costo_por_kg": costo_kg,
-        },
-    )
-
-# -----------------
+# -------------------------
 # BUSCADORES
-# -----------------
+# -------------------------
 def buscar_cliente_telefono(request):
     cliente = None
     buscado = False
@@ -421,7 +322,9 @@ def buscar_cliente_telefono(request):
             cliente = Cliente.objects.filter(telefono=telefono).first()
 
     return render(
-        request, "crm/buscar_telefono.html", {"cliente": cliente, "buscado": buscado}
+        request,
+        "crm/buscar_telefono.html",
+        {"cliente": cliente, "buscado": buscado},
     )
 
 
@@ -430,9 +333,13 @@ def buscar_cliente_por_nombre(request):
     query = ""
 
     if request.method == "POST":
-        query = request.POST.get("nombre", "").strip()
+        query = (request.POST.get("nombre") or "").strip()
         if query:
-            cliente = Cliente.objects.filter(nombre__icontains=query).first()
+            cliente = (
+                Cliente.objects.filter(nombre__icontains=query)
+                .order_by("id")
+                .first()
+            )
 
     return render(
         request,
@@ -441,9 +348,9 @@ def buscar_cliente_por_nombre(request):
     )
 
 
-
-
-
+# -------------------------
+# DASHBOARD (KPIs + gráficos)
+# -------------------------
 def dashboard(request):
     hoy = timezone.localdate()
     inicio_mes = hoy.replace(day=1)
@@ -475,11 +382,7 @@ def dashboard(request):
         .order_by("mes")
     )
 
-    labels_mes = []
-    ingresos_mes = []
-    kilos_mes = []
-    ventas_mes = []
-
+    labels_mes, ingresos_mes, kilos_mes, ventas_mes = [], [], [], []
     for r in serie_qs:
         m = r["mes"]
         labels_mes.append(m.strftime("%m-%Y") if m else "")
@@ -502,7 +405,7 @@ def dashboard(request):
     canal_labels = [c["canal"] for c in por_canal_qs]
     canal_ingresos = [float(c["ingresos"] or 0) for c in por_canal_qs]
 
-    # --- Top productos (KILOS por SKU) ✅ ---
+    # --- Top productos (KILOS por SKU) ---
     kilos_expr = ExpressionWrapper(
         F("cantidad") * F("producto__peso_kg"),
         output_field=DecimalField(max_digits=12, decimal_places=2),
@@ -528,12 +431,12 @@ def dashboard(request):
         "kpi_n_ventas": n_ventas,
         "kpi_ticket": ticket_prom,
 
-        # para tablas
+        # tablas
         "serie": list(serie_qs),
         "por_canal": list(por_canal_qs),
         "top_productos": list(top_productos_qs),
 
-        # para charts (JSON)
+        # charts JSON
         "labels_mes_json": json.dumps(labels_mes),
         "ingresos_mes_json": json.dumps(ingresos_mes),
         "kilos_mes_json": json.dumps(kilos_mes),
@@ -542,8 +445,156 @@ def dashboard(request):
         "canal_labels_json": json.dumps(canal_labels),
         "canal_ingresos_json": json.dumps(canal_ingresos),
 
-        # ✅ Top productos ahora por KILOS
         "prod_labels_json": json.dumps(prod_labels),
         "prod_kilos_json": json.dumps(prod_kilos),
     }
     return render(request, "crm/dashboard.html", context)
+
+
+# -------------------------
+# RESUMEN MENSUAL (con costos + gastos + utilidad)
+# -------------------------
+from decimal import Decimal
+from datetime import timedelta
+
+from django.shortcuts import render
+from django.utils import timezone
+from django.utils.dateparse import parse_date
+
+from django.db.models import Sum, Count, Value, DecimalField, Q
+from django.db.models.functions import Coalesce, TruncMonth, ExtractYear, ExtractMonth
+
+from .models import Venta, GastoOperacional, Importacion
+
+
+# RESUMEN MENSUAL (ventas + costo + gastos + utilidad)
+# -------------------------
+def resumen_mensual(request):
+    hoy = timezone.localdate()
+
+    # Defaults: últimos 6 meses (desde inicio del mes actual hacia atrás)
+    inicio_mes = hoy.replace(day=1)
+    default_desde = inicio_mes - timedelta(days=180)
+    default_hasta = hoy
+
+    # GET filtros
+    desde_str = (request.GET.get("desde") or "").strip()
+    hasta_str = (request.GET.get("hasta") or "").strip()
+
+    desde = parse_date(desde_str) if desde_str else default_desde
+    hasta = parse_date(hasta_str) if hasta_str else default_hasta
+
+    if not desde:
+        desde = default_desde
+    if not hasta:
+        hasta = default_hasta
+    if desde > hasta:
+        desde, hasta = hasta, desde
+
+    # Importación activa -> costo prom/kg
+    imp_activa = Importacion.objects.filter(activo=True).order_by("-fecha").first()
+    costo_por_kg = imp_activa.costo_por_kg if imp_activa else Decimal("0")
+
+    # --------
+    # VENTAS por mes (mes como DateField para evitar desfase por timezone)
+    # --------
+    ventas_qs = (
+        Venta.objects
+        .filter(fecha__date__gte=desde, fecha__date__lte=hasta)
+        .annotate(mes=TruncMonth("fecha", output_field=DateField()))
+        .values("mes")
+        .annotate(
+            kilos=Coalesce(
+                Sum("kilos_total"),
+                Value(Decimal("0.00")),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            ventas_brutas=Coalesce(
+                Sum("monto_total", filter=~Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO)),
+                Value(Decimal("0.00")),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            notas_credito=Coalesce(
+                Sum("monto_total", filter=Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO)),
+                Value(Decimal("0.00")),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            cantidad_ventas=Count("id"),
+        )
+        .order_by("-mes")
+    )
+
+    # --------
+    # GASTOS por mes (mes como DateField)
+    # --------
+    gastos_qs = (
+        GastoOperacional.objects
+        .filter(fecha__gte=desde, fecha__lte=hasta)
+        .annotate(mes=TruncMonth("fecha", output_field=DateField()))
+        .values("mes")
+        .annotate(
+            gastos=Coalesce(
+                Sum("monto_neto"),
+                Value(Decimal("0.00")),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        )
+    )
+
+    # Map: mes(date) -> gastos
+    gastos_map = {r["mes"]: (r["gastos"] or Decimal("0")) for r in gastos_qs}
+
+    filas = []
+    for r in ventas_qs:
+        mes = r["mes"]  # date (1er día del mes)
+        kilos = r["kilos"] or Decimal("0")
+        bruto = r["ventas_brutas"] or Decimal("0")
+        notas = r["notas_credito"] or Decimal("0")
+
+        ventas_netas = bruto - notas
+        neto_real = ventas_netas  # por ahora igual (si luego sacas IVA, lo ajustas aquí)
+
+        costo = (kilos * (costo_por_kg or Decimal("0"))).quantize(Decimal("0.01"))
+        margen_bruto = neto_real - costo
+
+        gastos = gastos_map.get(mes, Decimal("0"))
+        utilidad = margen_bruto - gastos
+
+        filas.append({
+            "mes": mes,
+            "kilos": kilos,
+            "ventas_brutas": bruto,
+            "notas_credito": notas,
+            "ventas_netas": ventas_netas,
+            "neto": neto_real,
+            "cantidad_ventas": r["cantidad_ventas"],
+            "costo": costo,
+            "margen_bruto": margen_bruto,
+            "gastos": gastos,
+            "utilidad": utilidad,
+        })
+
+    totales = {
+        "kilos": sum((f["kilos"] for f in filas), Decimal("0")),
+        "ventas_brutas": sum((f["ventas_brutas"] for f in filas), Decimal("0")),
+        "notas_credito": sum((f["notas_credito"] for f in filas), Decimal("0")),
+        "ventas_netas": sum((f["ventas_netas"] for f in filas), Decimal("0")),
+        "neto": sum((f["neto"] for f in filas), Decimal("0")),
+        "costo": sum((f["costo"] for f in filas), Decimal("0")),
+        "margen_bruto": sum((f["margen_bruto"] for f in filas), Decimal("0")),
+        "gastos": sum((f["gastos"] for f in filas), Decimal("0")),
+        "utilidad": sum((f["utilidad"] for f in filas), Decimal("0")),
+    }
+
+    return render(
+        request,
+        "crm/resumen_mensual.html",
+        {
+            "filas": filas,
+            "totales": totales,
+            "desde": desde,
+            "hasta": hasta,
+            "hoy": hoy,
+            "costo_por_kg": costo_por_kg,
+        },
+    )
