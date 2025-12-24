@@ -1,16 +1,19 @@
 from decimal import Decimal
+import json
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.views.decorators.http import require_POST
+from django.utils import timezone
 
-from django.db import models
-from django.db.models import Sum, Count, Max, Value, DecimalField
+from django.db.models import (
+    Sum, Count, Max, Q, F, Value,
+    DecimalField, ExpressionWrapper
+)
 from django.db.models.functions import Coalesce, TruncMonth
 
 from .forms import ClienteForm, VentaForm, VentaItemForm
-from .models import Cliente, Venta, VentaItem
-
+from .models import Cliente, Venta, VentaItem, Producto
 
 # -----------------
 # CLIENTES
@@ -225,12 +228,19 @@ def venta_detalle(request, venta_id):
     items = venta.items.select_related("producto").all().order_by("id")
     form_item = VentaItemForm()
 
+    # ✅ lista de productos activos para armar el <select> con data-precio
+    productos = Producto.objects.filter(activo=True).order_by("nombre")
+
     return render(
         request,
         "crm/venta_detalle.html",
-        {"venta": venta, "items": items, "form_item": form_item},
+        {
+            "venta": venta,
+            "items": items,
+            "form_item": form_item,
+            "productos": productos,
+        },
     )
-
 
 @require_POST
 def venta_item_agregar(request, venta_id):
@@ -260,8 +270,14 @@ def venta_item_borrar(request, item_id):
 # ✅ RESUMEN MENSUAL
 # -----------------
 def resumen_mensual(request):
+    hoy = timezone.localdate()
+    inicio_mes = hoy.replace(day=1)
+    desde = inicio_mes - timezone.timedelta(days=180)  # ~6 meses
+
     qs = (
-        Venta.objects.annotate(mes=TruncMonth("fecha"))
+        Venta.objects
+        .filter(fecha__date__gte=desde)
+        .annotate(mes=TruncMonth("fecha"))
         .values("mes")
         .annotate(
             kilos=Coalesce(
@@ -270,12 +286,18 @@ def resumen_mensual(request):
                 output_field=DecimalField(max_digits=12, decimal_places=2),
             ),
             ventas_brutas=Coalesce(
-                Sum("monto_total", filter=~models.Q(tipo_documento="nota_credito")),
+                Sum(
+                    "monto_total",
+                    filter=~Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO),
+                ),
                 Value(0),
                 output_field=DecimalField(max_digits=12, decimal_places=2),
             ),
             notas_credito=Coalesce(
-                Sum("monto_total", filter=models.Q(tipo_documento="nota_credito")),
+                Sum(
+                    "monto_total",
+                    filter=Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO),
+                ),
                 Value(0),
                 output_field=DecimalField(max_digits=12, decimal_places=2),
             ),
@@ -315,6 +337,8 @@ def resumen_mensual(request):
                 "notas_credito": total_notas,
                 "neto": total_neto,
             },
+            "desde": desde,
+            "hoy": hoy,
         },
     )
 
@@ -351,3 +375,111 @@ def buscar_cliente_por_nombre(request):
         "crm/buscar_cliente_nombre.html",
         {"cliente": cliente, "query": query},
     )
+
+
+
+
+
+def dashboard(request):
+    hoy = timezone.localdate()
+    inicio_mes = hoy.replace(day=1)
+    desde = inicio_mes - timezone.timedelta(days=180)  # ~6 meses
+
+    ventas = Venta.objects.filter(fecha__date__gte=desde)
+    ventas_normales = ventas.exclude(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO)
+
+    ingresos = ventas_normales.aggregate(s=Sum("monto_total"))["s"] or Decimal("0")
+    kilos = ventas.aggregate(s=Sum("kilos_total"))["s"] or Decimal("0")
+    n_ventas = ventas_normales.count()
+
+    ticket_prom = Decimal("0")
+    if n_ventas > 0:
+        ticket_prom = (ingresos / Decimal(n_ventas)).quantize(Decimal("1"))
+
+    # --- Serie mensual ---
+    serie_qs = (
+        ventas.annotate(mes=TruncMonth("fecha"))
+        .values("mes")
+        .annotate(
+            ventas=Count("id"),
+            kilos=Sum("kilos_total"),
+            ingresos=Sum(
+                "monto_total",
+                filter=~Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO),
+            ),
+        )
+        .order_by("mes")
+    )
+
+    labels_mes = []
+    ingresos_mes = []
+    kilos_mes = []
+    ventas_mes = []
+
+    for r in serie_qs:
+        m = r["mes"]
+        labels_mes.append(m.strftime("%m-%Y") if m else "")
+        ingresos_mes.append(float(r["ingresos"] or 0))
+        kilos_mes.append(float(r["kilos"] or 0))
+        ventas_mes.append(int(r["ventas"] or 0))
+
+    # --- Por canal ---
+    por_canal_qs = (
+        ventas.values("canal")
+        .annotate(
+            ventas=Count("id"),
+            ingresos=Sum(
+                "monto_total",
+                filter=~Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO),
+            ),
+        )
+        .order_by("-ingresos")
+    )
+    canal_labels = [c["canal"] for c in por_canal_qs]
+    canal_ingresos = [float(c["ingresos"] or 0) for c in por_canal_qs]
+
+    # --- Top productos (KILOS por SKU) ✅ ---
+    kilos_expr = ExpressionWrapper(
+        F("cantidad") * F("producto__peso_kg"),
+        output_field=DecimalField(max_digits=12, decimal_places=2),
+    )
+
+    top_productos_qs = (
+        VentaItem.objects
+        .filter(venta__fecha__date__gte=desde)
+        .exclude(venta__tipo_documento=Venta.TipoDocumento.NOTA_CREDITO)
+        .values("producto__nombre")
+        .annotate(kilos=Sum(kilos_expr))
+        .order_by("-kilos")[:10]
+    )
+
+    prod_labels = [p["producto__nombre"] for p in top_productos_qs]
+    prod_kilos = [float(p["kilos"] or 0) for p in top_productos_qs]
+
+    context = {
+        "desde": desde,
+        "hoy": hoy,
+        "kpi_ingresos": ingresos,
+        "kpi_kilos": kilos,
+        "kpi_n_ventas": n_ventas,
+        "kpi_ticket": ticket_prom,
+
+        # para tablas
+        "serie": list(serie_qs),
+        "por_canal": list(por_canal_qs),
+        "top_productos": list(top_productos_qs),
+
+        # para charts (JSON)
+        "labels_mes_json": json.dumps(labels_mes),
+        "ingresos_mes_json": json.dumps(ingresos_mes),
+        "kilos_mes_json": json.dumps(kilos_mes),
+        "ventas_mes_json": json.dumps(ventas_mes),
+
+        "canal_labels_json": json.dumps(canal_labels),
+        "canal_ingresos_json": json.dumps(canal_ingresos),
+
+        # ✅ Top productos ahora por KILOS
+        "prod_labels_json": json.dumps(prod_labels),
+        "prod_kilos_json": json.dumps(prod_kilos),
+    }
+    return render(request, "crm/dashboard.html", context)

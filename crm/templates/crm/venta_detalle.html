@@ -14,11 +14,40 @@
 <hr>
 
 <h3>Agregar ítem</h3>
+
 <form method="post"
       action="{% url 'crm:venta_item_agregar' venta.id %}"
       style="margin-bottom:12px;">
   {% csrf_token %}
-  {{ form_item.as_p }}
+
+  <p>
+    <label for="id_producto"><strong>Producto:</strong></label><br>
+    <select name="producto" id="id_producto" required>
+      <option value="">---------</option>
+      {% for p in productos %}
+        <option value="{{ p.id }}"
+                data-precio="{{ p.precio_sugerido|floatformat:0 }}">
+          {{ p.nombre }}
+        </option>
+      {% endfor %}
+    </select>
+  </p>
+
+  <p>
+    <label for="id_cantidad"><strong>Cantidad:</strong></label><br>
+    <input type="number" name="cantidad" id="id_cantidad" min="1" value="1" required>
+  </p>
+
+  <p>
+    <label for="id_precio_unitario"><strong>Precio unitario:</strong></label><br>
+    <input type="number"
+           name="precio_unitario"
+           id="id_precio_unitario"
+           step="1"
+           min="0"
+           placeholder="Se rellenará con el sugerido (editable)">
+  </p>
+
   <button type="submit" class="btn btn-primary">Agregar</button>
 </form>
 
@@ -43,13 +72,10 @@
         <td style="text-align:right;">$ {{ it.precio_unitario|floatformat:0 }}</td>
         <td style="text-align:right;">$ {{ it.subtotal|floatformat:0 }}</td>
         <td>
-          <form method="post"
-                action="{% url 'crm:venta_item_borrar' it.id %}"
-                class="inline-form">
+          <form method="post" action="{% url 'crm:venta_item_borrar' it.id %}" class="inline-form">
             {% csrf_token %}
-            <button type="submit"
-                    class="btn btn-delete"
-                    onclick="return confirm('¿Borrar este ítem?');">
+            <button type="submit" class="btn btn-delete"
+              onclick="return confirm('¿Borrar este ítem?');">
               Borrar
             </button>
           </form>
@@ -82,4 +108,39 @@
   <a class="btn btn-edit" href="{% url 'crm:venta_editar' venta.id %}">Editar venta</a>
 </p>
 
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const sel = document.getElementById("id_producto");
+    const precio = document.getElementById("id_precio_unitario");
+
+    if (!sel || !precio) return;
+
+    function aplicarSugerido(force=false) {
+      const opt = sel.options[sel.selectedIndex];
+      const sugerido = opt ? (opt.getAttribute("data-precio") || "") : "";
+      const actual = (precio.value || "").trim();
+
+      console.log("Producto:", opt ? opt.text : "(none)", "data-precio:", sugerido);
+
+      // Si no hay sugerido, no rellenamos
+      if (sugerido === "" || sugerido === "None") return;
+
+      // rellena si está vacío, o si force=true (al cargar)
+      if (force || actual === "") {
+        precio.value = sugerido;
+      }
+    }
+
+    // al cambiar el producto
+    sel.addEventListener("change", function () {
+      aplicarSugerido(false);
+    });
+
+    // al cargar: si ya viene seleccionado, rellena
+    aplicarSugerido(true);
+  })();
+</script>
 {% endblock %}

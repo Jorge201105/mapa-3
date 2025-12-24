@@ -1,15 +1,15 @@
 from django.contrib import admin
 from django.db.models import Sum, Count, Max
-from .models import Cliente, Producto, Venta, VentaItem  # ✅ agrega Producto
+from .models import Cliente, Producto, Venta, VentaItem
 from .services import segmentar_cliente
 
 
 # =========================
-# PRODUCTOS ✅ NUEVO
+# PRODUCTOS ✅ (con precio sugerido)
 # =========================
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
-    list_display = ("sku", "nombre", "peso_kg", "activo")
+    list_display = ("sku", "nombre", "peso_kg", "precio_sugerido", "activo")  # ✅ nuevo
     list_filter = ("activo",)
     search_fields = ("sku", "nombre")
     ordering = ("nombre",)
@@ -44,30 +44,25 @@ class ClienteAdmin(admin.ModelAdmin):
             ultima_compra=Max("ventas__fecha"),
         )
 
-    # 🔹 Kilos acumulados
     def get_kilos_total(self, obj):
         return obj.kilos_total or 0
     get_kilos_total.short_description = "Kilos totales"
     get_kilos_total.admin_order_field = "kilos_total"
 
-    # 🔹 Gasto total en $
     def get_gasto_total(self, obj):
         return obj.gasto_total or 0
     get_gasto_total.short_description = "Gasto total ($)"
     get_gasto_total.admin_order_field = "gasto_total"
 
-    # 🔹 Nº compras
     def get_compras(self, obj):
         return obj.compras
     get_compras.short_description = "N° compras"
     get_compras.admin_order_field = "compras"
 
-    # 🔹 Última compra
     def get_ultima_compra(self, obj):
         return obj.ultima_compra
     get_ultima_compra.short_description = "Última compra"
 
-    # 🔹 Segmento (usa tu lógica existente)
     def get_segmento(self, obj):
         return segmentar_cliente(obj)[0]
     get_segmento.short_description = "Segmento"

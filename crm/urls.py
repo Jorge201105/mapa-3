@@ -27,4 +27,7 @@ urlpatterns = [
 
     # ✅ Resumen mensual
     path("resumen-mensual/", views.resumen_mensual, name="resumen_mensual"),
+    
+    path("dashboard/", views.dashboard, name="dashboard"),
+
 ]

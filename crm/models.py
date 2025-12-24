@@ -32,6 +32,13 @@ class Producto(models.Model):
     sku = models.CharField(max_length=40, unique=True)
     nombre = models.CharField(max_length=140)
     peso_kg = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    precio_sugerido = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Precio sugerido de venta"
+    )
     activo = models.BooleanField(default=True)
 
     def __str__(self):
