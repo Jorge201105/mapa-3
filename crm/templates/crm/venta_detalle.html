@@ -47,6 +47,11 @@
            min="0"
            placeholder="Se rellenará con el sugerido (editable)">
   </p>
+  <p>
+    <strong>Costo estimado ($):</strong> $ {{ venta.costo_estimado|floatformat:0 }} <br>
+    <strong>Margen estimado ($):</strong> $ {{ venta.margen|floatformat:0 }} <br>
+    <strong>Margen %:</strong> {{ venta.margen_pct|floatformat:1 }}%
+  </p>
 
   <button type="submit" class="btn btn-primary">Agregar</button>
 </form>

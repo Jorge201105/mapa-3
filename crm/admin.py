@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.db.models import Sum, Count, Max
-from .models import Cliente, Producto, Venta, VentaItem
+from .models import Cliente, Producto, Venta, VentaItem, Importacion, GastoOperacional
 from .services import segmentar_cliente
 
 
@@ -103,3 +103,24 @@ class VentaItemAdmin(admin.ModelAdmin):
     )
     search_fields = ("producto__nombre", "producto__sku", "venta__cliente__nombre")
     ordering = ("-id",)
+
+
+@admin.register(Importacion)
+class ImportacionAdmin(admin.ModelAdmin):
+    list_display = (
+        "fecha",
+        "descripcion",
+        "kilos_ingresados",
+        "kilos_restantes",
+        "costo_total",
+        "costo_por_kg",
+        "activo",
+    )
+    list_filter = ("activo",)
+    ordering = ("-fecha",)
+
+@admin.register(GastoOperacional)
+class GastoOperacionalAdmin(admin.ModelAdmin):
+    list_display = ("fecha", "tipo", "descripcion", "monto")
+    list_filter = ("tipo",)
+    ordering = ("-fecha",)

@@ -1,7 +1,7 @@
 from django.utils import timezone
 from django.db.models import Sum, Max, Count
-from .models import Venta
-
+from .models import Venta, Importacion
+from decimal import Decimal
 
 def segmentar_cliente(c):
     hoy = timezone.now()
@@ -33,3 +33,52 @@ def segmentar_cliente(c):
 
     # ⚪ Ocasional
     return "Ocasional", "gray"
+
+
+from decimal import Decimal
+from .models import Importacion
+
+def costo_promedio_kg():
+    qs = Importacion.objects.filter(activo=True)
+
+    total_kilos = qs.aggregate(
+        s=models.Sum("kilos_restantes")
+    )["s"] or Decimal("0")
+
+    total_costo = qs.aggregate(
+        s=models.Sum("kilos_restantes") * 0
+    )
+
+    total_valor = sum(
+        (i.kilos_restantes * i.costo_por_kg for i in qs),
+        Decimal("0")
+    )
+
+    if total_kilos == 0:
+        return Decimal("0")
+
+    return (total_valor / total_kilos).quantize(Decimal("0.01"))
+
+
+from decimal import Decimal
+from django.db.models import Sum
+from .models import Importacion
+
+
+def costo_promedio_kg():
+    """
+    Costo promedio ponderado por kg usando importaciones activas
+    y kilos_restantes como "stock vigente".
+    """
+    qs = Importacion.objects.filter(activo=True)
+
+    total_kilos = qs.aggregate(s=Sum("kilos_restantes"))["s"] or Decimal("0")
+    if total_kilos <= 0:
+        return Decimal("0.00")
+
+    # valor total del stock = sum(kilos_restantes * costo_por_kg)
+    valor_total = Decimal("0")
+    for imp in qs:
+        valor_total += (imp.kilos_restantes or Decimal("0")) * (imp.costo_por_kg or Decimal("0"))
+
+    return (valor_total / total_kilos).quantize(Decimal("0.01"))

@@ -100,9 +100,12 @@
         <th>Fecha</th>
         <th>Documento</th>
         <th>Kilos</th>
-        <th>Total ($)</th>   {# ✅ NUEVO #}
+        <th>Total ($)</th>
+        <th>Costo ($)</th>
+        <th>Margen ($)</th>   
         <th>Canal</th>
         <th>Observaciones</th>
+        
         <th>Acciones</th>
       </tr>
     </thead>
@@ -133,6 +136,8 @@
 
         <!-- 💰 Pesos -->
         <td>$ {{ v.monto_total|floatformat:0 }}</td>
+        <td>$ {{ v.costo_estimado|floatformat:0 }}</td>
+        <td>$ {{ v.margen|floatformat:0 }}</td>
 
         <td>{{ v.get_canal_display }}</td>
 
