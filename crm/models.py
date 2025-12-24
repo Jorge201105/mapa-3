@@ -3,11 +3,6 @@ from decimal import Decimal
 from django.db import models
 from django.db.models import Sum, F, DecimalField, ExpressionWrapper
 from django.utils import timezone
-from decimal import Decimal
-
-
-
-
 
 
 class Cliente(models.Model):
@@ -37,13 +32,15 @@ class Producto(models.Model):
     sku = models.CharField(max_length=40, unique=True)
     nombre = models.CharField(max_length=140)
     peso_kg = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+
     precio_sugerido = models.DecimalField(
         max_digits=12,
         decimal_places=2,
         null=True,
         blank=True,
-        help_text="Precio sugerido de venta"
+        help_text="Precio sugerido de venta (opcional)."
     )
+
     activo = models.BooleanField(default=True)
 
     def __str__(self):
@@ -67,7 +64,7 @@ class Venta(models.Model):
     fecha = models.DateTimeField(default=timezone.now, db_index=True)
     canal = models.CharField(max_length=20, choices=Canal.choices, default=Canal.OTRO)
 
-    # ⚖️ kilos ingresados manualmente
+    # ⚖️ kilos ingresados manualmente (histórico / rápido)
     kilos_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     # 💰 monto CON IVA (desde ítems)
@@ -119,7 +116,7 @@ class Venta(models.Model):
         return (self.monto_total - self.monto_neto).quantize(Decimal("0.01"))
 
     # -----------------------
-    # COSTO Y MARGEN
+    # COSTO Y MARGEN (estimado por ahora)
     # -----------------------
     @property
     def costo_estimado(self):
@@ -130,6 +127,7 @@ class Venta(models.Model):
 
     @property
     def margen(self):
+        # ✅ margen correcto: NETO - COSTO
         return (self.monto_neto - self.costo_estimado).quantize(Decimal("0.01"))
 
     @property
@@ -150,11 +148,6 @@ class Venta(models.Model):
             total += it.cantidad * peso
         return total
 
-    
-
-
-    
-
 
 class VentaItem(models.Model):
     venta = models.ForeignKey(Venta, on_delete=models.CASCADE, related_name="items")
@@ -167,11 +160,9 @@ class VentaItem(models.Model):
         return self.cantidad * self.precio_unitario
 
 
-
-
-
 class Importacion(models.Model):
-    fecha = models.DateField(default=timezone.now)
+    # ✅ DateField: usa fecha local (no datetime)
+    fecha = models.DateField(default=timezone.localdate)
 
     descripcion = models.CharField(
         max_length=200,
@@ -179,44 +170,28 @@ class Importacion(models.Model):
         help_text="Ej: Contenedor Tianjin Sep-2025"
     )
 
-    kilos_ingresados = models.DecimalField(
-        max_digits=12,
-        decimal_places=2
-    )
+    kilos_ingresados = models.DecimalField(max_digits=12, decimal_places=2)
 
+    # ✅ costo_total SIN IVA (CIF + gastos asociados sin IVA)
     costo_total = models.DecimalField(
         max_digits=14,
         decimal_places=2,
-        help_text="Costo total CIF + gastos asociados"
+        help_text="Costo total CIF + gastos asociados (SIN IVA)"
     )
 
-    costo_por_kg = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        editable=False
-    )
-
-    kilos_restantes = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        editable=False
-    )
+    costo_por_kg = models.DecimalField(max_digits=12, decimal_places=2, editable=False)
+    kilos_restantes = models.DecimalField(max_digits=12, decimal_places=2, editable=False)
 
     activo = models.BooleanField(default=True)
-
     creado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["fecha"]
 
     def save(self, *args, **kwargs):
-        # calcular costo por kg automáticamente
-        if self.kilos_ingresados > 0:
-            self.costo_por_kg = (
-                self.costo_total / self.kilos_ingresados
-            ).quantize(Decimal("0.01"))
+        if self.kilos_ingresados and self.kilos_ingresados > 0:
+            self.costo_por_kg = (self.costo_total / self.kilos_ingresados).quantize(Decimal("0.01"))
 
-        # si es nuevo, los kilos restantes parten completos
         if not self.pk:
             self.kilos_restantes = self.kilos_ingresados
 
@@ -230,24 +205,37 @@ class GastoOperacional(models.Model):
     class Tipo(models.TextChoices):
         ARRIENDO = "arriendo", "Arriendo"
         BENCINA = "bencina", "Bencina"
-        TRANSPORTE = "transporte", "Transporte"
+        TRANSPORTE = "transporte", "Transporte / despacho"
         SERVICIOS = "servicios", "Servicios"
         CONTADOR = "contador", "Contador"
+        MARKETING = "marketing", "Marketing"
+        INSUMOS = "insumos", "Insumos"
         OTRO = "otro", "Otro"
 
-    fecha = models.DateField()
-    tipo = models.CharField(max_length=20, choices=Tipo.choices)
+    fecha = models.DateField(db_index=True)
+    tipo = models.CharField(max_length=20, choices=Tipo.choices, db_index=True)
     descripcion = models.CharField(max_length=200, blank=True)
 
-    monto = models.DecimalField(
+    # ✅ guarda NETO (SIN IVA)
+    monto_neto = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        help_text="Monto SIN IVA"
+        default=0,
+        help_text="Monto NETO (SIN IVA)"
     )
 
-    con_iva = models.BooleanField(default=True)
-
+    aplica_iva = models.BooleanField(default=True)
     creado_en = models.DateTimeField(auto_now_add=True)
 
+    @property
+    def iva(self):
+        if not self.aplica_iva:
+            return Decimal("0.00")
+        return (self.monto_neto * Decimal("0.19")).quantize(Decimal("0.01"))
+
+    @property
+    def total_con_iva(self):
+        return (self.monto_neto + self.iva).quantize(Decimal("0.01"))
+
     def __str__(self):
-        return f"{self.fecha} - {self.tipo} - ${self.monto}"
+        return f"{self.fecha} - {self.get_tipo_display()} - ${self.monto_neto}"

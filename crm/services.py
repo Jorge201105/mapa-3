@@ -82,3 +82,24 @@ def costo_promedio_kg():
         valor_total += (imp.kilos_restantes or Decimal("0")) * (imp.costo_por_kg or Decimal("0"))
 
     return (valor_total / total_kilos).quantize(Decimal("0.01"))
+
+
+def costo_promedio_kg():
+    """
+    Costo promedio ponderado por kg según importaciones ACTIVAS.
+    Retorna Decimal (sin IVA).
+    """
+    qs = Importacion.objects.filter(activo=True)
+
+    agg = qs.aggregate(
+        kilos=Sum("kilos_ingresados"),
+        costo=Sum("costo_total"),
+    )
+
+    kilos = agg["kilos"] or Decimal("0")
+    costo = agg["costo"] or Decimal("0")
+
+    if kilos <= 0:
+        return Decimal("0")
+
+    return (costo / kilos).quantize(Decimal("0.01"))

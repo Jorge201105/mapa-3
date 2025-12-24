@@ -9,7 +9,7 @@ from .services import segmentar_cliente
 # =========================
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
-    list_display = ("sku", "nombre", "peso_kg", "precio_sugerido", "activo")  # ✅ nuevo
+    list_display = ("sku", "nombre", "peso_kg", "precio_sugerido", "activo")
     list_filter = ("activo",)
     search_fields = ("sku", "nombre")
     ordering = ("nombre",)
@@ -105,6 +105,9 @@ class VentaItemAdmin(admin.ModelAdmin):
     ordering = ("-id",)
 
 
+# =========================
+# IMPORTACIONES
+# =========================
 @admin.register(Importacion)
 class ImportacionAdmin(admin.ModelAdmin):
     list_display = (
@@ -119,8 +122,14 @@ class ImportacionAdmin(admin.ModelAdmin):
     list_filter = ("activo",)
     ordering = ("-fecha",)
 
+
+# =========================
+# GASTOS OPERACIONALES ✅
+# =========================
 @admin.register(GastoOperacional)
 class GastoOperacionalAdmin(admin.ModelAdmin):
-    list_display = ("fecha", "tipo", "descripcion", "monto")
-    list_filter = ("tipo",)
+    # ✅ monto correcto: monto_neto (SIN IVA)
+    list_display = ("fecha", "tipo", "descripcion", "monto_neto", "aplica_iva")
+    list_filter = ("tipo", "aplica_iva")
+    search_fields = ("descripcion",)
     ordering = ("-fecha",)

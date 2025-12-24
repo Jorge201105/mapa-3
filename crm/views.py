@@ -13,8 +13,9 @@ from django.db.models import (
 from django.db.models.functions import Coalesce, TruncMonth
 
 from .forms import ClienteForm, VentaForm, VentaItemForm
-from .models import Cliente, Venta, VentaItem, Producto
+from .models import Cliente, Venta, VentaItem, Producto, GastoOperacional
 
+from .services import costo_promedio_kg
 # -----------------
 # CLIENTES
 # -----------------
@@ -269,14 +270,20 @@ def venta_item_borrar(request, item_id):
 # -----------------
 # ✅ RESUMEN MENSUAL
 # -----------------
+
+
+
 def resumen_mensual(request):
     hoy = timezone.localdate()
     inicio_mes = hoy.replace(day=1)
     desde = inicio_mes - timezone.timedelta(days=180)  # ~6 meses
 
-    qs = (
+    # -----------------------------
+    # 1) Ventas por mes
+    # -----------------------------
+    qs_ventas = (
         Venta.objects
-        .filter(fecha__date__gte=desde)
+        .filter(fecha__date__gte=desde)  # Venta.fecha es DateTimeField => OK usar __date
         .annotate(mes=TruncMonth("fecha"))
         .values("mes")
         .annotate(
@@ -286,18 +293,12 @@ def resumen_mensual(request):
                 output_field=DecimalField(max_digits=12, decimal_places=2),
             ),
             ventas_brutas=Coalesce(
-                Sum(
-                    "monto_total",
-                    filter=~Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO),
-                ),
+                Sum("monto_total", filter=~Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO)),
                 Value(0),
                 output_field=DecimalField(max_digits=12, decimal_places=2),
             ),
             notas_credito=Coalesce(
-                Sum(
-                    "monto_total",
-                    filter=Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO),
-                ),
+                Sum("monto_total", filter=Q(tipo_documento=Venta.TipoDocumento.NOTA_CREDITO)),
                 Value(0),
                 output_field=DecimalField(max_digits=12, decimal_places=2),
             ),
@@ -306,25 +307,83 @@ def resumen_mensual(request):
         .order_by("-mes")
     )
 
+    # -----------------------------
+    # 2) Gastos operacionales por mes
+    #    OJO: fecha es DateField => NO usar __date
+    # -----------------------------
+    qs_gastos = (
+        GastoOperacional.objects
+        .filter(fecha__gte=desde)
+        .annotate(mes=TruncMonth("fecha"))
+        .values("mes")
+        .annotate(
+            gastos_neto=Coalesce(
+                Sum("monto_neto"),
+                Value(0),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        )
+    )
+
+    # Diccionario: mes -> gastos
+    gastos_por_mes = {g["mes"]: (g["gastos_neto"] or Decimal("0")) for g in qs_gastos}
+
+    # -----------------------------
+    # 3) Costo estimado por kg
+    # -----------------------------
+    costo_kg = costo_promedio_kg() or Decimal("0")  # neto por kg (idealmente)
+
+    # -----------------------------
+    # 4) Armar filas con margen/utilidad
+    # -----------------------------
     filas = []
-    for r in qs:
+    for r in qs_ventas:
+        mes = r["mes"]
+        kilos = r["kilos"] or Decimal("0")
         ventas_brutas = r["ventas_brutas"] or Decimal("0")
         notas = r["notas_credito"] or Decimal("0")
+
+        ventas_netas = ventas_brutas - notas
+
+        # Si tus ventas están CON IVA y quieres NETO real:
+        # neto = ventas_netas / 1.19
+        # Si tus ventas ya están en NETO, déjalo igual.
+        neto = ventas_netas
+
+        costo = (kilos * costo_kg).quantize(Decimal("0.01"))
+        margen_bruto = (neto - costo).quantize(Decimal("0.01"))
+
+        gastos = (gastos_por_mes.get(mes, Decimal("0"))).quantize(Decimal("0.01"))
+        utilidad = (margen_bruto - gastos).quantize(Decimal("0.01"))
+
         filas.append(
             {
-                "mes": r["mes"],
-                "kilos": r["kilos"] or Decimal("0"),
+                "mes": mes,
+                "kilos": kilos,
                 "ventas_brutas": ventas_brutas,
                 "notas_credito": notas,
-                "neto": ventas_brutas - notas,
+                "ventas_netas": ventas_netas,
+                "neto": neto,
+                "costo": costo,
+                "margen_bruto": margen_bruto,
+                "gastos": gastos,
+                "utilidad": utilidad,
                 "cantidad_ventas": r["cantidad_ventas"],
             }
         )
 
+    # -----------------------------
+    # 5) Totales
+    # -----------------------------
     total_kilos = sum((f["kilos"] for f in filas), Decimal("0"))
     total_bruto = sum((f["ventas_brutas"] for f in filas), Decimal("0"))
     total_notas = sum((f["notas_credito"] for f in filas), Decimal("0"))
-    total_neto = total_bruto - total_notas
+    total_ventas_netas = sum((f["ventas_netas"] for f in filas), Decimal("0"))
+    total_neto = sum((f["neto"] for f in filas), Decimal("0"))
+    total_costo = sum((f["costo"] for f in filas), Decimal("0"))
+    total_margen = sum((f["margen_bruto"] for f in filas), Decimal("0"))
+    total_gastos = sum((f["gastos"] for f in filas), Decimal("0"))
+    total_utilidad = sum((f["utilidad"] for f in filas), Decimal("0"))
 
     return render(
         request,
@@ -335,13 +394,18 @@ def resumen_mensual(request):
                 "kilos": total_kilos,
                 "ventas_brutas": total_bruto,
                 "notas_credito": total_notas,
+                "ventas_netas": total_ventas_netas,
                 "neto": total_neto,
+                "costo": total_costo,
+                "margen_bruto": total_margen,
+                "gastos": total_gastos,
+                "utilidad": total_utilidad,
             },
             "desde": desde,
             "hoy": hoy,
+            "costo_por_kg": costo_kg,
         },
     )
-
 
 # -----------------
 # BUSCADORES
