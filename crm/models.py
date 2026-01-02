@@ -1,9 +1,9 @@
 from decimal import Decimal
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Sum, F, DecimalField, ExpressionWrapper
 from django.utils import timezone
-
+from django.core.exceptions import ValidationError
 
 class Cliente(models.Model):
     nombre = models.CharField(max_length=120)
@@ -161,7 +161,6 @@ class VentaItem(models.Model):
 
 
 class Importacion(models.Model):
-    # ✅ DateField: usa fecha local (no datetime)
     fecha = models.DateField(default=timezone.localdate)
 
     descripcion = models.CharField(
@@ -172,7 +171,14 @@ class Importacion(models.Model):
 
     kilos_ingresados = models.DecimalField(max_digits=12, decimal_places=2)
 
-    # ✅ costo_total SIN IVA (CIF + gastos asociados sin IVA)
+    # ✅ Merma simple en kilos (Opción B)
+    merma_kg = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        help_text="Merma total en kilos (roturas, humedad, etc.)"
+    )
+
     costo_total = models.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -189,16 +195,42 @@ class Importacion(models.Model):
         ordering = ["fecha"]
 
     def save(self, *args, **kwargs):
-        if self.kilos_ingresados and self.kilos_ingresados > 0:
-            self.costo_por_kg = (self.costo_total / self.kilos_ingresados).quantize(Decimal("0.01"))
+        if self.kilos_ingresados is None or self.kilos_ingresados <= 0:
+            raise ValidationError("kilos_ingresados debe ser mayor a 0.")
+
+        if self.merma_kg is None or self.merma_kg < 0:
+            raise ValidationError("merma_kg no puede ser negativa.")
+
+        if self.merma_kg >= self.kilos_ingresados:
+            raise ValidationError("merma_kg no puede ser mayor o igual a kilos_ingresados.")
+
+        if self.costo_total is None or self.costo_total < 0:
+            raise ValidationError("costo_total no puede ser negativo.")
+
+        kilos_netos = self.kilos_ingresados - self.merma_kg
+        self.costo_por_kg = self.costo_total / kilos_netos
 
         if not self.pk:
-            self.kilos_restantes = self.kilos_ingresados
+            # ✅ creación: stock inicial ya con merma
+            self.kilos_restantes = kilos_netos
+            return super().save(*args, **kwargs)
 
+        # ✅ edición: ajustar stock por el cambio en merma
+        anterior = Importacion.objects.get(pk=self.pk)
+        merma_anterior = anterior.merma_kg or 0
+        merma_nueva = self.merma_kg or 0
+
+        delta_merma = merma_nueva - merma_anterior  # si aumenta merma, baja stock
+        nuevo_restante = (anterior.kilos_restantes or 0) - delta_merma
+
+        if nuevo_restante < 0:
+            raise ValidationError(
+                "La merma que estás ingresando dejaría kilos_restantes negativo. "
+                "Revisa: ya hay stock descontado/ventas o la merma es demasiado alta."
+            )
+
+        self.kilos_restantes = nuevo_restante
         super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.fecha} - {self.descripcion or 'Importación'}"
 
 
 class GastoOperacional(models.Model):
@@ -239,3 +271,5 @@ class GastoOperacional(models.Model):
 
     def __str__(self):
         return f"{self.fecha} - {self.get_tipo_display()} - ${self.monto_neto}"
+
+

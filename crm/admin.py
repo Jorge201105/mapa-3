@@ -1,11 +1,18 @@
 from django.contrib import admin
 from django.db.models import Sum, Count, Max
-from .models import Cliente, Producto, Venta, VentaItem, Importacion, GastoOperacional
+from .models import (
+    Cliente,
+    Producto,
+    Venta,
+    VentaItem,
+    Importacion,
+    GastoOperacional,
+)
 from .services import segmentar_cliente
 
 
 # =========================
-# PRODUCTOS ✅ (con precio sugerido)
+# PRODUCTOS ✅
 # =========================
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
@@ -106,7 +113,7 @@ class VentaItemAdmin(admin.ModelAdmin):
 
 
 # =========================
-# IMPORTACIONES
+# IMPORTACIONES ✅
 # =========================
 @admin.register(Importacion)
 class ImportacionAdmin(admin.ModelAdmin):
@@ -114,6 +121,7 @@ class ImportacionAdmin(admin.ModelAdmin):
         "fecha",
         "descripcion",
         "kilos_ingresados",
+        "merma_kg",
         "kilos_restantes",
         "costo_total",
         "costo_por_kg",
@@ -122,13 +130,11 @@ class ImportacionAdmin(admin.ModelAdmin):
     list_filter = ("activo",)
     ordering = ("-fecha",)
 
-
 # =========================
 # GASTOS OPERACIONALES ✅
 # =========================
 @admin.register(GastoOperacional)
 class GastoOperacionalAdmin(admin.ModelAdmin):
-    # ✅ monto correcto: monto_neto (SIN IVA)
     list_display = ("fecha", "tipo", "descripcion", "monto_neto", "aplica_iva")
     list_filter = ("tipo", "aplica_iva")
     search_fields = ("descripcion",)

@@ -17,6 +17,8 @@ from django.views.decorators.http import require_POST
 from .models import Cliente, Venta, VentaItem, Producto, Importacion, GastoOperacional
 from .forms import ClienteForm, VentaForm, VentaItemForm
 
+from .services_inventario import consumo_bolsas
+
 
 
 # crm/views.py
@@ -598,3 +600,116 @@ def resumen_mensual(request):
             "costo_por_kg": costo_por_kg,
         },
     )
+
+
+
+from decimal import Decimal
+from django.shortcuts import render
+from django.utils import timezone
+from django.db.models import Sum, Q, F, DecimalField, ExpressionWrapper, Value
+from django.db.models.functions import Coalesce
+
+from .models import Importacion, VentaItem, Venta
+
+
+def inventario(request):
+    """
+    Inventario MVP por KILOS (sin bolsas):
+    - Stock total (kg) = kilos_ingresados - kilos_vendidos
+    - Kilos vendidos se calcula desde VentaItem: cantidad * producto.peso_kg
+      excluyendo ventas con tipo_documento = NOTA_CREDITO
+    - Consumo promedio diario en ventana configurable (default: 30 días)
+    """
+
+    hoy = timezone.localdate()
+
+    # Ventana para consumo promedio (default 30 días)
+    try:
+        dias = int(request.GET.get("dias", "30"))
+        if dias <= 0:
+            dias = 30
+    except Exception:
+        dias = 30
+
+    desde_consumo = hoy - timezone.timedelta(days=dias)
+
+    # 1) Kilos ingresados (total)
+    kilos_ingresados = (
+        Importacion.objects.aggregate(
+            s=Coalesce(
+                Sum("kilos_ingresados"),
+                Value(0),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        )["s"]
+        or Decimal("0")
+    )
+
+    # 2) Kilos vendidos (desde items)
+    kilos_expr = ExpressionWrapper(
+        F("cantidad") * F("producto__peso_kg"),
+        output_field=DecimalField(max_digits=12, decimal_places=2),
+    )
+
+    kilos_vendidos_total = (
+        VentaItem.objects.exclude(venta__tipo_documento=Venta.TipoDocumento.NOTA_CREDITO)
+        .aggregate(
+            s=Coalesce(
+                Sum(kilos_expr),
+                Value(0),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        )["s"]
+        or Decimal("0")
+    )
+
+    # 3) Stock actual (kg)
+    stock_kg = (kilos_ingresados - kilos_vendidos_total).quantize(Decimal("0.01"))
+
+    # 4) Consumo en ventana (kg vendidos últimos N días)
+    kilos_vendidos_ventana = (
+        VentaItem.objects.filter(venta__fecha__date__gte=desde_consumo)
+        .exclude(venta__tipo_documento=Venta.TipoDocumento.NOTA_CREDITO)
+        .aggregate(
+            s=Coalesce(
+                Sum(kilos_expr),
+                Value(0),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        )["s"]
+        or Decimal("0")
+    )
+
+    # consumo diario (evitar división por 0)
+    consumo_diario = Decimal("0.00")
+    if dias > 0:
+        consumo_diario = (kilos_vendidos_ventana / Decimal(dias)).quantize(Decimal("0.01"))
+
+    # 5) Días de stock
+    dias_stock = None
+    fecha_reorden_estimada = None
+    if consumo_diario > 0:
+        dias_stock = (stock_kg / consumo_diario).quantize(Decimal("0.1"))
+        fecha_reorden_estimada = hoy + timezone.timedelta(days=float(dias_stock))
+
+    # 6) Umbral simple de alerta (puedes cambiarlo)
+    umbral_reorden_dias = 14
+    alerta_reorden = (dias_stock is not None) and (dias_stock <= Decimal(str(umbral_reorden_dias)))
+
+    context = {
+        "hoy": hoy,
+        "dias": dias,
+        "desde_consumo": desde_consumo,
+        "kilos_ingresados": kilos_ingresados,
+        "kilos_vendidos_total": kilos_vendidos_total,
+        "stock_kg": stock_kg,
+        "kilos_vendidos_ventana": kilos_vendidos_ventana,
+        "consumo_diario": consumo_diario,
+        "dias_stock": dias_stock,
+        "fecha_reorden_estimada": fecha_reorden_estimada,
+        "umbral_reorden_dias": umbral_reorden_dias,
+        "alerta_reorden": alerta_reorden,
+    }
+    return render(request, "crm/inventario.html", context)
+ 
+

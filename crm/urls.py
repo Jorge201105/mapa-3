@@ -29,5 +29,7 @@ urlpatterns = [
     path("resumen-mensual/", views.resumen_mensual, name="resumen_mensual"),
     
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("inventario/", views.inventario, name="inventario"),
+    
 
 ]
