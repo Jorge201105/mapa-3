@@ -1,7 +1,9 @@
+# rutas/optimizer.py
 import requests
 import json
 from django.conf import settings
 import itertools
+
 
 # --- PARTE 1: Obtener Distancias/Tiempos de Google Maps ---
 def get_distance_matrix(points, origin_coords, api_key, dest_coords=None):
@@ -10,19 +12,12 @@ def get_distance_matrix(points, origin_coords, api_key, dest_coords=None):
     - origen
     - todos los puntos de entrega
     - (opcional) destino
-
-    Índices en la matriz:
-      0                 : origen
-      1 .. num_points   : puntos de entrega
-      num_points + 1    : destino (si dest_coords no es None)
     """
     all_points_coords = [f"{origin_coords['latitud']},{origin_coords['longitud']}"]
 
-    # puntos de entrega
     for p in points:
         all_points_coords.append(f"{p.latitud},{p.longitud}")
 
-    # punto destino opcional
     if dest_coords is not None:
         all_points_coords.append(f"{dest_coords['latitud']},{dest_coords['longitud']}")
 
@@ -63,23 +58,43 @@ def get_distance_matrix(points, origin_coords, api_key, dest_coords=None):
         print(f"Error al decodificar la respuesta JSON de la API: {e}")
         return None
 
-# --- PARTE 2: Algoritmo de Optimización (TSP Solver) ---
+
+# --- PARTE 2: TSP Solver con Nearest Neighbor + 2-opt ---
+
 def solve_tsp(distance_matrix, num_points_entrega, start_index=0, end_index=None):
     """
-    Resuelve el TSP:
-
-    - Si end_index es None: ciclo
-        start -> puntos -> start
-    - Si end_index NO es None: camino
-        start -> puntos -> end_index
-
-    'num_points_entrega' = cantidad de puntos reales (sin contar origen ni destino).
+    Resuelve el TSP con algoritmo híbrido:
+    - Fuerza bruta para <= 9 puntos (rápido y óptimo)
+    - Nearest Neighbor + 2-opt para >= 10 puntos (rápido pero aproximado)
+    
+    Args:
+        distance_matrix: matriz de distancias
+        num_points_entrega: cantidad de puntos de entrega
+        start_index: índice del origen
+        end_index: índice del destino (None = ciclo cerrado)
+    
+    Returns:
+        (ruta_optima, distancia_total)
     """
     if not distance_matrix or num_points_entrega == 0:
         return [], 0.0
 
     delivery_indices = list(range(1, num_points_entrega + 1))
 
+    # ✅ Fuerza bruta para <= 9 puntos (óptimo garantizado)
+    if num_points_entrega <= 9:
+        return _solve_tsp_bruteforce(
+            distance_matrix, delivery_indices, start_index, end_index
+        )
+    
+    # ✅ Nearest Neighbor + 2-opt para >= 10 puntos (heurística)
+    return _solve_tsp_heuristic(
+        distance_matrix, delivery_indices, start_index, end_index
+    )
+
+
+def _solve_tsp_bruteforce(distance_matrix, delivery_indices, start_index, end_index):
+    """Fuerza bruta - O(n!) pero óptimo garantizado"""
     min_distance = float('inf')
     best_route = []
 
@@ -106,26 +121,104 @@ def solve_tsp(distance_matrix, num_points_entrega, start_index=0, end_index=None
 
     return best_route, min_distance
 
+
+def _solve_tsp_heuristic(distance_matrix, delivery_indices, start_index, end_index):
+    """
+    Nearest Neighbor + 2-opt - O(n²) mucho más rápido para n grande
+    """
+    # 1) Construir ruta inicial con Nearest Neighbor
+    unvisited = set(delivery_indices)
+    route = [start_index]
+    current = start_index
+
+    while unvisited:
+        nearest = min(
+            unvisited,
+            key=lambda x: distance_matrix[current][x]
+        )
+        route.append(nearest)
+        unvisited.remove(nearest)
+        current = nearest
+
+    # Agregar punto final
+    if end_index is None:
+        route.append(start_index)
+    else:
+        route.append(end_index)
+
+    # 2) Mejorar con 2-opt
+    route = _two_opt(distance_matrix, route)
+
+    # 3) Calcular distancia total
+    total_distance = 0.0
+    for i in range(len(route) - 1):
+        segment = distance_matrix[route[i]][route[i + 1]]
+        if segment == float('inf'):
+            return route, float('inf')
+        total_distance += segment
+
+    return route, total_distance
+
+
+def _two_opt(distance_matrix, route):
+    """
+    Optimización local 2-opt: invierte segmentos de la ruta
+    para reducir cruces y mejorar la distancia total.
+    """
+    improved = True
+    best_route = route[:]
+
+    while improved:
+        improved = False
+        for i in range(1, len(best_route) - 2):
+            for j in range(i + 1, len(best_route)):
+                if j - i == 1:
+                    continue
+
+                new_route = best_route[:]
+                # Invertir segmento [i:j]
+                new_route[i:j] = reversed(best_route[i:j])
+
+                # Calcular distancia
+                old_dist = _route_distance(distance_matrix, best_route)
+                new_dist = _route_distance(distance_matrix, new_route)
+
+                if new_dist < old_dist:
+                    best_route = new_route
+                    improved = True
+                    break
+            if improved:
+                break
+
+    return best_route
+
+
+def _route_distance(distance_matrix, route):
+    """Calcula distancia total de una ruta"""
+    total = 0.0
+    for i in range(len(route) - 1):
+        d = distance_matrix[route[i]][route[i + 1]]
+        if d == float('inf'):
+            return float('inf')
+        total += d
+    return total
+
+
 # --- PARTE 3: Cálculos de Consumo ---
 AUTO_RENDIMIENTO_KM_POR_LITRO = 12  # valor por defecto
 
+
 def calculate_fuel_cost(total_distance_km, rendimiento_km_por_litro=AUTO_RENDIMIENTO_KM_POR_LITRO):
     """
-    Calcula los litros de combustible consumidos (no el costo en dinero),
-    en función de la distancia total y el rendimiento (km/L).
-
-    El costo en CLP se calcula en la vista multiplicando:
-        litros_consumidos * precio_bencina_CLP_por_L
+    Calcula los litros de combustible consumidos.
     """
     if total_distance_km == float('inf'):
         return float('inf')
     if rendimiento_km_por_litro <= 0:
-        return float('inf')  # evita división por cero o negativos
+        return float('inf')
     return total_distance_km / rendimiento_km_por_litro
 
+
 def calculate_fuel_consumption(total_distance_km, rendimiento_km_por_litro=AUTO_RENDIMIENTO_KM_POR_LITRO):
-    """
-    Alias de calculate_fuel_cost para mantener compatibilidad de nombre
-    si más adelante quieres usarlo con este nombre.
-    """
+    """Alias para compatibilidad"""
     return calculate_fuel_cost(total_distance_km, rendimiento_km_por_litro)

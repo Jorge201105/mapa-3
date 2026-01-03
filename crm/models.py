@@ -1,9 +1,11 @@
+# crm/models.py
 from decimal import Decimal
 
 from django.db import models, transaction
 from django.db.models import Sum, F, DecimalField, ExpressionWrapper
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+
 
 class Cliente(models.Model):
     nombre = models.CharField(max_length=120)
@@ -13,6 +15,17 @@ class Cliente(models.Model):
     direccion = models.CharField(max_length=200, blank=True)
     observaciones = models.TextField(blank=True)
     creado_en = models.DateTimeField(auto_now_add=True)
+
+    # ✅ NUEVO: Meta con índices
+    class Meta:
+        verbose_name = "Cliente"
+        verbose_name_plural = "Clientes"
+        indexes = [
+            models.Index(fields=['telefono']),
+            models.Index(fields=['email']),
+            models.Index(fields=['nombre']),
+            models.Index(fields=['-creado_en']),
+        ]
 
     @property
     def segmento(self):
@@ -43,6 +56,15 @@ class Producto(models.Model):
 
     activo = models.BooleanField(default=True)
 
+    # ✅ NUEVO: Meta con índices
+    class Meta:
+        verbose_name = "Producto"
+        verbose_name_plural = "Productos"
+        indexes = [
+            models.Index(fields=['sku']),
+            models.Index(fields=['activo', 'nombre']),
+        ]
+
     def __str__(self):
         return f"{self.nombre} [{self.sku}]"
 
@@ -64,10 +86,7 @@ class Venta(models.Model):
     fecha = models.DateTimeField(default=timezone.now, db_index=True)
     canal = models.CharField(max_length=20, choices=Canal.choices, default=Canal.OTRO)
 
-    # ⚖️ kilos ingresados manualmente (histórico / rápido)
     kilos_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-
-    # 💰 monto CON IVA (desde ítems)
     monto_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     observaciones = models.TextField(blank=True)
@@ -80,7 +99,10 @@ class Venta(models.Model):
     )
     numero_documento = models.CharField(max_length=30, blank=True, db_index=True)
 
+    # ✅ NUEVO: Meta con índices
     class Meta:
+        verbose_name = "Venta"
+        verbose_name_plural = "Ventas"
         constraints = [
             models.UniqueConstraint(
                 fields=["tipo_documento", "numero_documento"],
@@ -88,13 +110,16 @@ class Venta(models.Model):
                 condition=~models.Q(numero_documento=""),
             )
         ]
+        indexes = [
+            models.Index(fields=['-fecha', 'cliente']),
+            models.Index(fields=['tipo_documento', 'fecha']),
+            models.Index(fields=['-fecha']),
+            models.Index(fields=['cliente', '-fecha']),
+        ]
 
     def __str__(self):
         return f"Venta #{self.id} - {self.cliente}"
 
-    # -----------------------
-    # TOTALES
-    # -----------------------
     def recalcular_monto_total(self, guardar=True):
         expr = ExpressionWrapper(
             F("cantidad") * F("precio_unitario"),
@@ -115,9 +140,6 @@ class Venta(models.Model):
     def iva(self):
         return (self.monto_total - self.monto_neto).quantize(Decimal("0.01"))
 
-    # -----------------------
-    # COSTO Y MARGEN (estimado por ahora)
-    # -----------------------
     @property
     def costo_estimado(self):
         from .services import costo_promedio_kg
@@ -127,7 +149,6 @@ class Venta(models.Model):
 
     @property
     def margen(self):
-        # ✅ margen correcto: NETO - COSTO
         return (self.monto_neto - self.costo_estimado).quantize(Decimal("0.01"))
 
     @property
@@ -137,9 +158,6 @@ class Venta(models.Model):
             return Decimal("0.00")
         return ((self.margen / neto) * Decimal("100")).quantize(Decimal("0.01"))
 
-    # -----------------------
-    # KILOS CALCULADOS DESDE ÍTEMS
-    # -----------------------
     @property
     def kilos_calculados(self):
         total = Decimal("0.00")
@@ -154,6 +172,15 @@ class VentaItem(models.Model):
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT)
     cantidad = models.PositiveIntegerField(default=1)
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2)
+
+    # ✅ NUEVO: Meta con índices
+    class Meta:
+        verbose_name = "Item de Venta"
+        verbose_name_plural = "Items de Venta"
+        indexes = [
+            models.Index(fields=['venta', 'producto']),
+            models.Index(fields=['producto']),
+        ]
 
     @property
     def subtotal(self):
@@ -171,7 +198,6 @@ class Importacion(models.Model):
 
     kilos_ingresados = models.DecimalField(max_digits=12, decimal_places=2)
 
-    # ✅ Merma simple en kilos (Opción B)
     merma_kg = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -185,48 +211,84 @@ class Importacion(models.Model):
         help_text="Costo total CIF + gastos asociados (SIN IVA)"
     )
 
-    costo_por_kg = models.DecimalField(max_digits=12, decimal_places=2, editable=False)
-    kilos_restantes = models.DecimalField(max_digits=12, decimal_places=2, editable=False)
+    costo_por_kg = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        editable=False
+    )
+    
+    kilos_restantes = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        editable=False
+    )
 
     activo = models.BooleanField(default=True)
     creado_en = models.DateTimeField(auto_now_add=True)
 
+    # ✅ NUEVO: Meta con índices
     class Meta:
-        ordering = ["fecha"]
+        ordering = ["-fecha"]
+        verbose_name = "Importación"
+        verbose_name_plural = "Importaciones"
+        indexes = [
+            models.Index(fields=['activo', '-fecha']),
+        ]
 
-    def save(self, *args, **kwargs):
+    def __str__(self):
+        return f"{self.fecha} - {self.descripcion or 'Importación'} ({self.kilos_ingresados} kg)"
+
+    def clean(self):
+        """✅ Validaciones que Django ejecuta automáticamente en forms y admin."""
+        super().clean()
+        
         if self.kilos_ingresados is None or self.kilos_ingresados <= 0:
-            raise ValidationError("kilos_ingresados debe ser mayor a 0.")
+            raise ValidationError({
+                'kilos_ingresados': 'Debe ser mayor a 0.'
+            })
 
         if self.merma_kg is None or self.merma_kg < 0:
-            raise ValidationError("merma_kg no puede ser negativa.")
+            raise ValidationError({
+                'merma_kg': 'No puede ser negativa.'
+            })
 
         if self.merma_kg >= self.kilos_ingresados:
-            raise ValidationError("merma_kg no puede ser mayor o igual a kilos_ingresados.")
+            raise ValidationError({
+                'merma_kg': f'No puede ser mayor o igual a kilos ingresados ({self.kilos_ingresados} kg).'
+            })
 
         if self.costo_total is None or self.costo_total < 0:
-            raise ValidationError("costo_total no puede ser negativo.")
+            raise ValidationError({
+                'costo_total': 'No puede ser negativo.'
+            })
 
+    def save(self, *args, **kwargs):
+        """✅ Calcula automáticamente costo_por_kg y kilos_restantes"""
+        self.full_clean()
+        
         kilos_netos = self.kilos_ingresados - self.merma_kg
-        self.costo_por_kg = self.costo_total / kilos_netos
+        self.costo_por_kg = (self.costo_total / kilos_netos).quantize(Decimal("0.01"))
 
         if not self.pk:
-            # ✅ creación: stock inicial ya con merma
             self.kilos_restantes = kilos_netos
             return super().save(*args, **kwargs)
 
-        # ✅ edición: ajustar stock por el cambio en merma
-        anterior = Importacion.objects.get(pk=self.pk)
-        merma_anterior = anterior.merma_kg or 0
-        merma_nueva = self.merma_kg or 0
+        try:
+            anterior = Importacion.objects.get(pk=self.pk)
+        except Importacion.DoesNotExist:
+            self.kilos_restantes = kilos_netos
+            return super().save(*args, **kwargs)
 
-        delta_merma = merma_nueva - merma_anterior  # si aumenta merma, baja stock
-        nuevo_restante = (anterior.kilos_restantes or 0) - delta_merma
+        merma_anterior = anterior.merma_kg or Decimal("0")
+        merma_nueva = self.merma_kg or Decimal("0")
+
+        delta_merma = merma_nueva - merma_anterior
+        nuevo_restante = (anterior.kilos_restantes or Decimal("0")) - delta_merma
 
         if nuevo_restante < 0:
             raise ValidationError(
-                "La merma que estás ingresando dejaría kilos_restantes negativo. "
-                "Revisa: ya hay stock descontado/ventas o la merma es demasiado alta."
+                f"La merma ingresada ({merma_nueva} kg) dejaría stock negativo "
+                f"({nuevo_restante} kg). Ya hay {abs(nuevo_restante)} kg vendidos o descontados."
             )
 
         self.kilos_restantes = nuevo_restante
@@ -248,7 +310,6 @@ class GastoOperacional(models.Model):
     tipo = models.CharField(max_length=20, choices=Tipo.choices, db_index=True)
     descripcion = models.CharField(max_length=200, blank=True)
 
-    # ✅ guarda NETO (SIN IVA)
     monto_neto = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -258,6 +319,16 @@ class GastoOperacional(models.Model):
 
     aplica_iva = models.BooleanField(default=True)
     creado_en = models.DateTimeField(auto_now_add=True)
+
+    # ✅ NUEVO: Meta con índices
+    class Meta:
+        verbose_name = "Gasto Operacional"
+        verbose_name_plural = "Gastos Operacionales"
+        indexes = [
+            models.Index(fields=['-fecha']),
+            models.Index(fields=['tipo', 'fecha']),
+            models.Index(fields=['fecha']),
+        ]
 
     @property
     def iva(self):
@@ -271,5 +342,3 @@ class GastoOperacional(models.Model):
 
     def __str__(self):
         return f"{self.fecha} - {self.get_tipo_display()} - ${self.monto_neto}"
-
-
