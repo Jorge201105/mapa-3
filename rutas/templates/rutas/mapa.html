@@ -2,6 +2,7 @@
 {% load static %}
 
 {% block extra_head %}
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <style>
         #map {
             height: 600px;
@@ -259,6 +260,12 @@
 
 {% block extra_js %}
     
+<!-- ✅ CSRF TOKEN DISPONIBLE GLOBALMENTE PARA JS -->
+    <script>
+        window.CSRF_TOKEN = "{{ csrf_token }}";
+        console.log("CSRF_TOKEN inyectado:", window.CSRF_TOKEN);
+    </script>
+    
     
     <script>
         var google_maps_api_key = "{{ google_maps_api_key }}";
@@ -295,7 +302,9 @@
         console.log("origen_coords:", origen_coords);
         console.log("destino_coords:", destino_coords);
     </script>
-    <script src="{% static 'js/main.js' %}" defer></script>
+    <script>
+    window.CSRF_TOKEN = "{{ csrf_token }}";
+    </script>
     <script defer
             src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&callback=initMap">
     </script>

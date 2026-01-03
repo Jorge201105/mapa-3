@@ -176,6 +176,7 @@ function toggleDestinoCustom() {
 }
 
 // ===================== CSRF =====================
+// ===================== CSRF (ROBUSTO EN CODESPACES) =====================
 function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== "") {
@@ -189,6 +190,25 @@ function getCookie(name) {
         }
     }
     return cookieValue;
+}
+
+// 1) Intenta leer CSRF desde <meta name="csrf-token" ...> (más confiable)
+// 2) Si no existe, cae a cookie "csrftoken"
+function getCSRFToken() {
+    // 1) token inyectado por template (lo más confiable)
+    if (window.CSRF_TOKEN && window.CSRF_TOKEN !== "NOTPROVIDED") {
+        return window.CSRF_TOKEN;
+    }
+
+    // 2) meta tag
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    const metaToken = meta ? meta.getAttribute("content") : null;
+    if (metaToken && metaToken !== "NOTPROVIDED") {
+        return metaToken;
+    }
+
+    // 3) fallback cookie
+    return getCookie("csrftoken");
 }
 
 // ===================== MODAL REUTILIZABLE =====================
@@ -251,16 +271,19 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ===================== ELIMINAR 1 PUNTO (MODAL) =====================
+// ===================== ELIMINAR 1 PUNTO (MODAL) =====================
 function eliminarPunto(url) {
     openConfirmModal({
         title: "Eliminar punto",
         text: "¿Seguro que quieres eliminar este punto de entrega?",
         confirmText: "Eliminar",
         onConfirm: () => {
-            const csrftoken = getCookie("csrftoken");
+            const csrftoken = getCSRFToken();
+            console.log("CSRF usado:", csrftoken);
 
             fetch(url, {
                 method: "POST",
+                credentials: "same-origin",
                 headers: {
                     "X-CSRFToken": csrftoken,
                     "X-Requested-With": "XMLHttpRequest",
@@ -268,8 +291,8 @@ function eliminarPunto(url) {
             })
             .then((response) => {
                 if (!response.ok) {
-                    console.error("Error al borrar. Status:", response.status);
-                    throw new Error("Error al borrar el punto");
+                    alert("No se pudo borrar. Status: " + response.status);
+                    throw new Error("HTTP " + response.status);
                 }
                 return response.json();
             })
@@ -297,25 +320,41 @@ function borrarTodosPuntos(url) {
         text: "¿Seguro que quieres borrar TODOS los puntos de entrega?",
         confirmText: "Borrar todo",
         onConfirm: () => {
-            const csrftoken = getCookie("csrftoken");
+            const csrftoken = getCSRFToken();
+            console.log("csrftoken:", csrftoken);
 
             fetch(url, {
                 method: "POST",
+                credentials: "same-origin",
                 headers: {
                     "X-CSRFToken": csrftoken,
                     "X-Requested-With": "XMLHttpRequest",
                 },
             })
-            .then(() => location.reload())
+            .then((response) => {
+                if (!response.ok) {
+                    console.error("Error al borrar todos. Status:", response.status);
+                    throw new Error("Error al borrar todos los puntos");
+                }
+                return response.json().catch(() => ({}));
+            })
+            .then((data) => {
+                if (!data.ok && data.ok !== undefined) {
+                    alert("El servidor respondió, pero no confirmó el borrado total.");
+                    console.error("Detalle error:", data.error);
+                    return;
+                }
+                location.reload();
+            })
             .catch((err) => {
                 console.error(err);
-                // fallback: navegación normal si tu vista no devuelve JSON
-                window.location.href = url;
+                alert("No se pudieron borrar todos los puntos");
             })
             .finally(() => closeConfirmModal());
         }
     });
 }
+
 
 // Exponer funciones globales
 window.initMap = initMap;

@@ -9,13 +9,16 @@ from django.views.decorators.http import require_POST
 from .models import PuntoEntrega
 from . import optimizer  # módulo de optimización
 
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+
 # Precio por defecto de la bencina (CLP/L)
 DEFAULT_FUEL_PRICE = 1250
 
 # Rendimiento por defecto del vehículo (km/L)
 DEFAULT_RENDIMIENTO = getattr(optimizer, 'AUTO_RENDIMIENTO_KM_POR_LITRO', 12)
 
-
+@ensure_csrf_cookie
 def mapa_view(request):
     """
     Muestra el mapa, la lista de puntos, el formulario de origen/destino
@@ -78,7 +81,7 @@ def mapa_view(request):
         'selected_ids': selected_ids,
     }
 
-    return render(request, 'rutas/mapa.html', context)
+    return render(request, "rutas/mapa.html", context)
 
 
 def agregar_punto(request):

@@ -27,12 +27,18 @@ ALLOWED_HOSTS = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
+    # ✅ TU HOST EXACTO (del navegador)
+    "https://ubiquitous-telegram-r4w677p5p7j4fr5r-8000.app.github.dev",
+
     "http://127.0.0.1:8000",
     "http://localhost:8000",
-    "https://localhost:8000",      # ← AÑADE ESTA
+    "https://localhost:8000",
     "https://*.app.github.dev",
     "https://*.githubpreview.dev",
 ]
+
+# ✅ Asegura que JS pueda leer token si se usa cookie (igual ahora usas meta)
+CSRF_COOKIE_HTTPONLY = False
 
 
 # ==========================
@@ -145,4 +151,3 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ==========================
 
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
-
