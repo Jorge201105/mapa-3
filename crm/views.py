@@ -210,7 +210,7 @@ def ventas_list(request):
         qs = qs.order_by("-id")
 
     # ✅ PAGINACIÓN
-    paginator = Paginator(qs, 50)
+    paginator = Paginator(qs, 25)
     page_number = request.GET.get('page', 1)
     
     try:

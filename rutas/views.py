@@ -1,23 +1,25 @@
+# rutas/views.py
 import json
 import requests
+import logging
 
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
-
-from .models import PuntoEntrega
-from . import optimizer  # módulo de optimización
-
 from django.views.decorators.csrf import ensure_csrf_cookie
 
+from .models import PuntoEntrega
+from . import optimizer
 
-# Precio por defecto de la bencina (CLP/L)
+logger = logging.getLogger(__name__)
+
 DEFAULT_FUEL_PRICE = 1250
-
-# Rendimiento por defecto del vehículo (km/L)
 DEFAULT_RENDIMIENTO = getattr(optimizer, 'AUTO_RENDIMIENTO_KM_POR_LITRO', 12)
 
+
+@login_required
 @ensure_csrf_cookie
 def mapa_view(request):
     """
@@ -26,22 +28,17 @@ def mapa_view(request):
     - En el MAPA solo se muestran los puntos seleccionados en la última optimización.
     - En el LISTADO/FORM aparecen todos los puntos para poder elegir nuevos subconjuntos.
     """
-    # Todos los puntos (para listado y checkboxes)
     puntos_entrega = PuntoEntrega.objects.all().order_by('orden_optimo', 'id')
 
-    # IDs de los puntos seleccionados en la última optimización (si existen)
     selected_ids = request.session.get('selected_ids')
 
     if selected_ids:
-        # Sólo estos puntos se mostrarán en el mapa
         puntos_para_mapa = PuntoEntrega.objects.filter(
             id__in=selected_ids
         ).order_by('orden_optimo', 'id')
     else:
-        # Si aún no se ha optimizado nunca, mostrar todos en el mapa
         puntos_para_mapa = puntos_entrega
 
-    # JSON que usará el JS para dibujar los puntos en el mapa
     puntos_json = json.dumps([
         {
             'id': p.id,
@@ -64,7 +61,6 @@ def mapa_view(request):
         'fuel_cost_clp': request.session.pop('fuel_cost_clp', None),
         'precio_bencina': request.session.pop('precio_bencina', DEFAULT_FUEL_PRICE),
 
-        # mantener el rendimiento que se usó en la última optimización
         'rendimiento_vehiculo': request.session.pop('rendimiento_vehiculo', DEFAULT_RENDIMIENTO),
 
         'direccion_origen': request.session.pop('direccion_origen', ''),
@@ -77,13 +73,13 @@ def mapa_view(request):
 
         'error_message': request.session.pop('error_message', None),
 
-        # NUEVO: para que el template sepa qué puntos quedaron seleccionados
         'selected_ids': selected_ids,
     }
 
     return render(request, "rutas/mapa.html", context)
 
 
+@login_required
 def agregar_punto(request):
     """
     Agrega un punto de entrega. Si no vienen lat/lng, geocodifica la dirección.
@@ -122,13 +118,15 @@ def agregar_punto(request):
                 )
                 return redirect('mapa')
         except requests.exceptions.RequestException as e:
+            logger.error(f"Error geocodificando dirección para {request.user.username}: {e}")
             request.session['error_message'] = f"Error de conexión con la API de geocodificación: {e}"
             return redirect('mapa')
         except Exception as e:
+            logger.error(f"Error inesperado geocodificando: {e}", exc_info=True)
             request.session['error_message'] = f"Error inesperado al geocodificar: {e}"
             return redirect('mapa')
 
-    # Convertir a float (el modelo ya se encargará del Decimal si corresponde)
+    # Convertir a float
     try:
         latitud = float(latitud)
         longitud = float(longitud)
@@ -136,15 +134,18 @@ def agregar_punto(request):
         request.session['error_message'] = 'Latitud o Longitud con formato incorrecto.'
         return redirect('mapa')
 
-    PuntoEntrega.objects.create(
+    punto = PuntoEntrega.objects.create(
         nombre=nombre,
         direccion=direccion,
         latitud=latitud,
         longitud=longitud,
     )
+    
+    logger.info(f"Punto #{punto.id} agregado por {request.user.username}: {nombre}")
     return redirect('mapa')
 
 
+@login_required
 def optimizar_ruta(request):
     """
     Toma los puntos de entrega seleccionados, el origen/destino,
@@ -156,14 +157,20 @@ def optimizar_ruta(request):
 
     # 0) LEER PUNTOS SELECCIONADOS DEL FORMULARIO
     selected_ids = request.POST.getlist('puntos_seleccionados')
+    
+    logger.info(
+        f"Usuario {request.user.username} optimizando ruta con "
+        f"{len(selected_ids)} puntos seleccionados"
+    )
 
     if not selected_ids:
+        logger.warning(f"Usuario {request.user.username} intentó optimizar sin puntos")
         request.session['error_message'] = (
             'Debes seleccionar al menos un punto de entrega para optimizar la ruta.'
         )
         return redirect('mapa')
 
-    # Guardar selección en sesión para que el mapa y los checkboxes sepan qué se usó
+    # Guardar selección en sesión
     request.session['selected_ids'] = selected_ids
 
     # Obtener sólo los puntos seleccionados
@@ -193,14 +200,13 @@ def optimizar_ruta(request):
         request.session['error_message'] = 'La dirección de origen no puede estar vacía.'
         return redirect('mapa')
 
-    # 2) DESTINO (puede ser igual al origen, una bodega o una dirección personalizada)
+    # 2) DESTINO
     destino_predef = request.POST.get('destino_predefinido', '').strip()
     destino_custom = request.POST.get('destino_custom', '').strip()
 
     if destino_predef == 'custom':
         direccion_destino = destino_custom
     elif destino_predef == 'same_origin' or not destino_predef:
-        # Por defecto, si no elige nada, volvemos al origen
         direccion_destino = direccion_origen
     else:
         direccion_destino = destino_predef
@@ -233,6 +239,7 @@ def optimizar_ruta(request):
             )
             return redirect('mapa')
     except Exception as e:
+        logger.error(f"Error geocodificando origen: {e}", exc_info=True)
         request.session['error_message'] = f"Error al geocodificar la dirección de origen: {e}"
         return redirect('mapa')
 
@@ -264,6 +271,7 @@ def optimizar_ruta(request):
                 )
                 return redirect('mapa')
     except Exception as e:
+        logger.error(f"Error geocodificando destino: {e}", exc_info=True)
         request.session['error_message'] = f"Error al geocodificar la dirección destino: {e}"
         return redirect('mapa')
 
@@ -299,16 +307,14 @@ def optimizar_ruta(request):
         )
         return redirect('mapa')
 
-    # 7) GUARDAR ORDEN ÓPTIMO (índices 1..n en la matriz)
-    for i, matrix_idx in enumerate(optimized_route_indices[1:-1]):  # saltamos start y end
+    # 7) GUARDAR ORDEN ÓPTIMO
+    for i, matrix_idx in enumerate(optimized_route_indices[1:-1]):
         if 1 <= matrix_idx <= num_delivery_points:
-            punto = puntos_entrega_db[matrix_idx - 1]  # lista empieza en 0
+            punto = puntos_entrega_db[matrix_idx - 1]
             punto.orden_optimo = i + 1
             punto.save()
 
     # 8) CONSUMO Y COSTO
-
-    # leer rendimiento del formulario
     rendimiento_str = request.POST.get('rendimiento_vehiculo', '').strip()
     try:
         if rendimiento_str:
@@ -318,10 +324,8 @@ def optimizar_ruta(request):
     except ValueError:
         rendimiento_vehiculo = DEFAULT_RENDIMIENTO
 
-    # calcular litros consumidos usando el rendimiento
     fuel_consumed = optimizer.calculate_fuel_cost(total_distance_km, rendimiento_vehiculo)
 
-    # precio bencina
     precio_bencina_str = request.POST.get('precio_bencina', '').strip()
     try:
         precio_bencina = float(precio_bencina_str) if precio_bencina_str else DEFAULT_FUEL_PRICE
@@ -330,7 +334,7 @@ def optimizar_ruta(request):
 
     fuel_cost = fuel_consumed * precio_bencina
 
-    # guardar en sesión para mostrar en el template
+    # Guardar en sesión
     request.session['total_distance_km'] = round(total_distance_km, 2)
     request.session['fuel_consumed_liters'] = round(fuel_consumed, 2)
     request.session['fuel_cost_clp'] = round(fuel_cost, 0)
@@ -339,21 +343,31 @@ def optimizar_ruta(request):
     request.session['direccion_origen'] = direccion_origen
     request.session['direccion_destino'] = direccion_destino
 
+    logger.info(
+        f"Ruta optimizada por {request.user.username}: {total_distance_km:.2f} km, "
+        f"{fuel_consumed:.2f} L, ${fuel_cost:.0f} CLP"
+    )
+
     return redirect('mapa')
 
 
+@login_required
 def borrar_puntos(request):
     """
     Borra todos los puntos de entrega.
     """
     if request.method == "POST":
+        count = PuntoEntrega.objects.count()
         PuntoEntrega.objects.all().delete()
+        logger.warning(f"{count} puntos borrados por {request.user.username}")
+        
         # Limpiar selección si borras todos
         if 'selected_ids' in request.session:
             del request.session['selected_ids']
     return redirect('mapa')
 
 
+@login_required
 @require_POST
 def borrar_punto(request, punto_id):
     """
@@ -362,7 +376,10 @@ def borrar_punto(request, punto_id):
     """
     try:
         punto = get_object_or_404(PuntoEntrega, id=punto_id)
+        nombre = punto.nombre
         punto.delete()
+        
+        logger.info(f"Punto #{punto_id} ({nombre}) borrado por {request.user.username}")
 
         # Actualizar la selección en sesión si existía
         selected_ids = request.session.get('selected_ids')
@@ -373,5 +390,5 @@ def borrar_punto(request, punto_id):
 
         return JsonResponse({"ok": True})
     except Exception as e:
-        # Útil para depurar si algo raro pasa en producción
+        logger.error(f"Error borrando punto #{punto_id}: {e}", exc_info=True)
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
