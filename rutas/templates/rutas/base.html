@@ -69,6 +69,9 @@
       </div>
     </div>
 
+    <!-- ✅ CARGAR main.js ANTES de los scripts específicos de cada página -->
+    <script src="{% static 'js/main.js' %}?v=99"></script>
+    
     {% block extra_js %}{% endblock %}
 </body>
 </html>

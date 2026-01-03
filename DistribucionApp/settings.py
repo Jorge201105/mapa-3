@@ -39,7 +39,8 @@ CSRF_TRUSTED_ORIGINS = [
 
 # ✅ Asegura que JS pueda leer token si se usa cookie (igual ahora usas meta)
 CSRF_COOKIE_HTTPONLY = False
-
+CSRF_USE_SESSIONS = False
+CSRF_COOKIE_SAMESITE = 'Lax'
 
 # ==========================
 # APLICACIONES INSTALADAS
