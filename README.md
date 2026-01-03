@@ -1,1 +1,13 @@
-# mapa
+Algunos manejos del código para recordar
+
+
+
+Crean copas en base de datos para copiar y pegar en consola
+
+Comando directo para copiar una base de datos sqlite3.
+bash# Backup con fecha
+cp db.sqlite3 backup_$(date +%Y%m%d_%H%M%S).db
+Mejor opción: con carpeta
+bash# Crear carpeta y hacer backup
+mkdir -p backups
+cp db.sqlite3 backups/backup_$(date +%Y%m%d_%H%M%S).db

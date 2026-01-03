@@ -43,6 +43,8 @@ def clientes_list(request):
     comuna = request.GET.get("comuna", "").strip()
     min_kilos = request.GET.get("min_kilos", "").strip()
     orden = request.GET.get("orden", "").strip()
+    # ✅ NUEVO: Búsqueda por nombre
+    buscar = request.GET.get("buscar", "").strip()
 
     # ✅ OPTIMIZACIÓN: prefetch ventas para evitar N+1
     qs = (
@@ -68,6 +70,10 @@ def clientes_list(request):
             freq=Coalesce(Count("ventas"), Value(0)),
         )
     )
+
+    # ✅ NUEVO: Filtro por nombre
+    if buscar:
+        qs = qs.filter(nombre__icontains=buscar)
 
     if comuna:
         qs = qs.filter(comuna=comuna)
@@ -123,6 +129,7 @@ def clientes_list(request):
             "comuna": comuna,
             "min_kilos": min_kilos,
             "orden": orden,
+            "buscar": buscar,  # ✅ NUEVO: Pasar al template
         },
     }
     return render(request, "crm/clientes_list.html", context)
@@ -182,9 +189,15 @@ def ventas_list(request):
     canal = request.GET.get("canal", "").strip()
     min_kilos = request.GET.get("min_kilos", "").strip()
     max_kilos = request.GET.get("max_kilos", "").strip()
+    # ✅ NUEVO: Búsqueda por nombre de cliente
+    buscar_cliente = request.GET.get("buscar_cliente", "").strip()
 
     # ✅ OPTIMIZACIÓN: select_related
     qs = Venta.objects.select_related("cliente").all()
+
+    # ✅ NUEVO: Filtro por nombre de cliente
+    if buscar_cliente:
+        qs = qs.filter(cliente__nombre__icontains=buscar_cliente)
 
     if tipo_documento:
         qs = qs.filter(tipo_documento=tipo_documento)
@@ -228,6 +241,7 @@ def ventas_list(request):
             "canal": canal,
             "min_kilos": min_kilos,
             "max_kilos": max_kilos,
+            "buscar_cliente": buscar_cliente,  # ✅ NUEVO: Pasar al template
         },
     }
     return render(request, "crm/ventas_list.html", context)
