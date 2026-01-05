@@ -53,7 +53,7 @@
         </td>
       </tr>
       <tr>
-        <th style="text-align:left;">Fecha estimada para reorden</th>
+        <th style="text-align:left;">Fecha estimada de agotamiento</th>
         <td>
           {% if fecha_reorden_estimada %}
             <strong>{{ fecha_reorden_estimada|date:"d-m-Y" }}</strong>
@@ -62,13 +62,36 @@
           {% endif %}
         </td>
       </tr>
+      <tr style="background-color: #fff3cd;">
+        <th style="text-align:left;">⏰ Fecha sugerida para hacer orden</th>
+        <td>
+          {% if fecha_orden_sugerida %}
+            <strong style="color: #856404;">{{ fecha_orden_sugerida|date:"d-m-Y" }}</strong>
+            {% if dias_hasta_ordenar %}
+              {% if dias_hasta_ordenar > 0 %}
+                (en {{ dias_hasta_ordenar|floatformat:0 }} días)
+              {% else %}
+                <span style="color: #dc3545;">(¡ORDENAR YA!)</span>
+              {% endif %}
+            {% endif %}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th style="text-align:left;">Lead time de importación</th>
+        <td>{{ dias_importacion }} días</td>
+      </tr>
     </tbody>
   </table>
 </div>
 
 {% if alerta_reorden %}
-  <p style="margin-top:12px; padding:10px; border:1px solid #f2c200; border-radius:8px;">
-    ⚠️ <strong>Alerta:</strong> Te quedan <strong>{{ dias_stock|floatformat:1 }}</strong> días de stock (umbral {{ umbral_reorden_dias }}).
+  <p style="margin-top:12px; padding:10px; border:1px solid #dc3545; background-color: #f8d7da; border-radius:8px; color: #721c24;">
+    🚨 <strong>ALERTA CRÍTICA:</strong> Te quedan <strong>{{ dias_stock|floatformat:1 }}</strong> días de stock. 
+    Considerando que tu importación demora {{ dias_importacion }} días, 
+    <strong>debes hacer tu orden AHORA</strong> (fecha sugerida: {{ fecha_orden_sugerida|date:"d-m-Y" }}).
   </p>
 {% endif %}
 

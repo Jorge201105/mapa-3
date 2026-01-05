@@ -639,6 +639,9 @@ def inventario(request):
         except Exception:
             dias = 30
 
+        # Parámetro configurable para lead time de importación
+        dias_importacion = 90
+
         desde_consumo = hoy - timezone.timedelta(days=dias)
 
         kilos_ingresados = (
@@ -690,11 +693,24 @@ def inventario(request):
 
         dias_stock = None
         fecha_reorden_estimada = None
+        fecha_orden_sugerida = None
+        dias_hasta_ordenar = None
+        
         if consumo_diario > 0:
             dias_stock = (stock_kg / consumo_diario).quantize(Decimal("0.1"))
             fecha_reorden_estimada = hoy + timezone.timedelta(days=float(dias_stock))
+            
+            # Calcular cuándo hacer la orden (restando el lead time de importación)
+            dias_hasta_ordenar = dias_stock - Decimal(str(dias_importacion))
+            
+            if dias_hasta_ordenar > 0:
+                fecha_orden_sugerida = hoy + timezone.timedelta(days=float(dias_hasta_ordenar))
+            else:
+                # Si el resultado es negativo, significa que ya deberías haber ordenado
+                fecha_orden_sugerida = hoy
 
-        umbral_reorden_dias = 14
+        # Alerta si quedan menos días de stock que el lead time de importación
+        umbral_reorden_dias = dias_importacion
         alerta_reorden = (dias_stock is not None) and (dias_stock <= Decimal(str(umbral_reorden_dias)))
 
         context = {
@@ -708,6 +724,9 @@ def inventario(request):
             "consumo_diario": consumo_diario,
             "dias_stock": dias_stock,
             "fecha_reorden_estimada": fecha_reorden_estimada,
+            "dias_importacion": dias_importacion,
+            "fecha_orden_sugerida": fecha_orden_sugerida,
+            "dias_hasta_ordenar": dias_hasta_ordenar,
             "umbral_reorden_dias": umbral_reorden_dias,
             "alerta_reorden": alerta_reorden,
         }
