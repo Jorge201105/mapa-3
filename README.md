@@ -11,3 +11,9 @@ Mejor opción: con carpeta
 bash# Crear carpeta y hacer backup
 mkdir -p backups
 cp db.sqlite3 backups/backup_$(date +%Y%m%d_%H%M%S).db
+
+
+Para ajustar codigo a pantalla coloca crt+shif+p y selecciona toggel word wrap, se ajustará el codigo a la pantalla.
+
+comando para copiar los programas que use pip freeze > requirements.txt
+
