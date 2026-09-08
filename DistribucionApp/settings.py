@@ -24,6 +24,7 @@ ALLOWED_HOSTS = [
     "localhost",
     ".app.github.dev",        # Codespaces
     ".githubpreview.dev",     # Codespaces
+    "ubuntu-server.tail773deb.ts.net",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -35,6 +36,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://localhost:8000",
     "https://*.app.github.dev",
     "https://*.githubpreview.dev",
+    "https://ubuntu-server.tail773deb.ts.net:8443",
 ]
 
 # ✅ Asegura que JS pueda leer token si se usa cookie (igual ahora usas meta)
